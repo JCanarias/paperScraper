@@ -1,0 +1,16 @@
+# Copiar a /etc/systemd/system/telegram-bot.service y ajustar User y rutas.
+[Unit]
+Description=Bot de Telegram que guarda archivos recibidos
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jorge
+WorkingDirectory=/home/jorge/paperScraper
+ExecStart=/home/jorge/paperScraper/.venv/bin/python telegram_bot/bot.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

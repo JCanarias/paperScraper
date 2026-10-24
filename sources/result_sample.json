@@ -1,0 +1,403 @@
+A5064999416
+Escritossobreellenguaje
+{
+  'id': 'https://openalex.org/W48354293',
+  'doi': None,
+  'title': 'Escritos sobre el lenguaje',
+  'display_name': 'Escritos sobre el lenguaje',
+  'publication_year': 1991,
+  'publication_date': '1991-01-01',
+  'ids': {
+    'openalex': 'https://openalex.org/W48354293',
+    'mag': '48354293'
+  },
+  'language': 'es',
+  'primary_location': {
+    'id': 'mag:48354293',
+    'doi': None,
+    'is_oa': False,
+    'landing_page_url': '.es/servlet/librohttps://dialnet.unirioja?codigo=91267',
+    'pdf_url': None,
+    'source': {
+      'id': 'https://openalex.org/S4306401293',
+      'display_name': 'Dialnet (Universidad de la Rioja)',
+      'issn_l': None,
+      'issn': None,
+      'is_oa': False,
+      'is_in_doaj': False,
+      'is_core': False,
+      'listed_in': [
+        
+      ],
+      'host_organization': 'https://openalex.org/I3032752892',
+      'host_organization_name': 'Universidad Internacional de La Rioja',
+      'host_organization_lineage': [
+        'https://openalex.org/I3032752892'
+      ],
+      'host_organization_lineage_names': [
+        
+      ],
+      'type': 'repository'
+    },
+    'license': None,
+    'license_id': None,
+    'version': None,
+    'is_accepted': False,
+    'is_published': False,
+    'raw_source_name': None,
+    'raw_type': None
+  },
+  'volume': None,
+  'type': 'article',
+  'indexed_in': [
+    
+  ],
+  'open_access': {
+    'is_oa': False,
+    'oa_status': 'closed',
+    'oa_url': None,
+    'any_repository_has_fulltext': False
+  },
+  'authorships': [
+    {
+      'author_position': 'first',
+      'author': {
+        'id': 'https://openalex.org/A5021764808',
+        'display_name': 'Wilhelm von Humboldt',
+        'orcid': None,
+        'observed_orcids': [
+          
+        ]
+      },
+      'institutions': [
+        
+      ],
+      'countries': [
+        
+      ],
+      'is_corresponding': False,
+      'raw_author_name': 'Wilhelmvon Humboldt',
+      'raw_affiliation_strings': [
+        
+      ],
+      'raw_orcid': None,
+      'affiliations': [
+        
+      ]
+    },
+    {
+      'author_position': 'middle',
+      'author': {
+        'id': 'https://openalex.org/A5110499339',
+        'display_name': 'José María Valverde',
+        'orcid': None,
+        'observed_orcids': [
+          
+        ]
+      },
+      'institutions': [
+        
+      ],
+      'countries': [
+        
+      ],
+      'is_corresponding': False,
+      'raw_author_name': 'José María Valverde',
+      'raw_affiliation_strings': [
+        
+      ],
+      'raw_orcid': None,
+      'affiliations': [
+        
+      ]
+    },
+    {
+      'author_position': 'last',
+      'author': {
+        'id': 'https://openalex.org/A5064999416',
+        'display_name': 'Andrés Sánchez Pascual',
+        'orcid': None,
+        'observed_orcids': [
+          
+        ]
+      },
+      'institutions': [
+        
+      ],
+      'countries': [
+        
+      ],
+      'is_corresponding': False,
+      'raw_author_name': 'Andrés Sánchez Pascual',
+      'raw_affiliation_strings': [
+        
+      ],
+      'raw_orcid': None,
+      'affiliations': [
+        
+      ]
+    }
+  ],
+  'institutions': [
+    
+  ],
+  'countries_distinct_count': 0,
+  'institutions_distinct_count': 0,
+  'corresponding_author_ids': [
+    
+  ],
+  'corresponding_institution_ids': [
+    
+  ],
+  'apc_list': None,
+  'apc_paid': None,
+  'fwci': 0.0,
+  'has_fulltext': False,
+  'cited_by_count': 35,
+  'citation_normalized_percentile': {
+    'value': 0.01434328,
+    'is_in_top_1_percent': False,
+    'is_in_top_10_percent': False
+  },
+  'cited_by_percentile_year': {
+    'min': 88,
+    'max': 98
+  },
+  'biblio': {
+    'volume': None,
+    'issue': None,
+    'first_page': None,
+    'last_page': None
+  },
+  'is_retracted': False,
+  'is_paratext': False,
+  'is_xpac': False,
+  'primary_topic': {
+    'id': 'https://openalex.org/T13260',
+    'display_name': 'Linguistics and Language Studies',
+    'score': 0.27810001373291016,
+    'subfield': {
+      'id': 'https://openalex.org/subfields/1203',
+      'display_name': 'Language and Linguistics'
+    },
+    'field': {
+      'id': 'https://openalex.org/fields/12',
+      'display_name': 'Arts and Humanities'
+    },
+    'domain': {
+      'id': 'https://openalex.org/domains/2',
+      'display_name': 'Social Sciences'
+    }
+  },
+  'topics': [
+    {
+      'id': 'https://openalex.org/T13260',
+      'display_name': 'Linguistics and Language Studies',
+      'score': 0.27810001373291016,
+      'subfield': {
+        'id': 'https://openalex.org/subfields/1203',
+        'display_name': 'Language and Linguistics'
+      },
+      'field': {
+        'id': 'https://openalex.org/fields/12',
+        'display_name': 'Arts and Humanities'
+      },
+      'domain': {
+        'id': 'https://openalex.org/domains/2',
+        'display_name': 'Social Sciences'
+      }
+    },
+    {
+      'id': 'https://openalex.org/T12341',
+      'display_name': 'Spanish Linguistics and Language Studies',
+      'score': 0.20100000500679016,
+      'subfield': {
+        'id': 'https://openalex.org/subfields/1203',
+        'display_name': 'Language and Linguistics'
+      },
+      'field': {
+        'id': 'https://openalex.org/fields/12',
+        'display_name': 'Arts and Humanities'
+      },
+      'domain': {
+        'id': 'https://openalex.org/domains/2',
+        'display_name': 'Social Sciences'
+      }
+    },
+    {
+      'id': 'https://openalex.org/T13156',
+      'display_name': 'Historical Linguistics and Language Studies',
+      'score': 0.19529999792575836,
+      'subfield': {
+        'id': 'https://openalex.org/subfields/1203',
+        'display_name': 'Language and Linguistics'
+      },
+      'field': {
+        'id': 'https://openalex.org/fields/12',
+        'display_name': 'Arts and Humanities'
+      },
+      'domain': {
+        'id': 'https://openalex.org/domains/2',
+        'display_name': 'Social Sciences'
+      }
+    }
+  ],
+  'keywords': [
+    {
+      'id': 'https://openalex.org/keywords/language',
+      'display_name': 'language',
+      'score': 0.7979999780654907
+    },
+    {
+      'id': 'https://openalex.org/keywords/philosophy-of-language',
+      'display_name': 'philosophy of language',
+      'score': 0.7940000295639038
+    }
+  ],
+  'concepts': [
+    {
+      'id': 'https://openalex.org/C41895202',
+      'wikidata': 'https://www.wikidata.org/wiki/Q8162',
+      'display_name': 'Linguistics',
+      'level': 1,
+      'score': 0.3990621864795685
+    },
+    {
+      'id': 'https://openalex.org/C138885662',
+      'wikidata': 'https://www.wikidata.org/wiki/Q5891',
+      'display_name': 'Philosophy',
+      'level': 0,
+      'score': 0.39704057574272156
+    }
+  ],
+  'mesh': [
+    
+  ],
+  'locations_count': 1,
+  'locations': [
+    {
+      'id': 'mag:48354293',
+      'doi': None,
+      'is_oa': False,
+      'landing_page_url': 'https://dialnet.unirioja.es/servlet/libro?codigo=91267',
+      'pdf_url': None,
+      'source': {
+        'id': 'https://openalex.org/S4306401293',
+        'display_name': 'Dialnet (Universidad de la Rioja)',
+        'issn_l': None,
+        'issn': None,
+        'is_oa': False,
+        'is_in_doaj': False,
+        'is_core': False,
+        'listed_in': [
+          
+        ],
+        'host_organization': 'https://openalex.org/I3032752892',
+        'host_organization_name': 'Universidad Internacional de La Rioja',
+        'host_organization_lineage': [
+          'https://openalex.org/I3032752892'
+        ],
+        'host_organization_lineage_names': [
+          
+        ],
+        'type': 'repository'
+      },
+      'license': None,
+      'license_id': None,
+      'version': None,
+      'is_accepted': False,
+      'is_published': None,
+      'raw_source_name': None,
+      'raw_type': None
+    }
+  ],
+  'best_oa_location': None,
+  'sustainable_development_goals': [
+    
+  ],
+  'sustainable_development_goals_aurora': [
+    {
+      'score': 0.8299999833106995,
+      'display_name': 'Quality education',
+      'id': 'https://metadata.un.org/sdg/4'
+    }
+  ],
+  'study_designs': [
+    
+  ],
+  'awards': [
+    
+  ],
+  'funders': [
+    
+  ],
+  'has_content': {
+    'grobid_xml': False,
+    'pdf': False
+  },
+  'content_urls': None,
+  'referenced_works_count': 0,
+  'referenced_works': [
+    
+  ],
+  'related_works': [
+    
+  ],
+  'abstract_inverted_index': None,
+  'counts_by_year': [
+    {
+      'year': 2025,
+      'cited_by_count': 1
+    },
+    {
+      'year': 2024,
+      'cited_by_count': 2
+    },
+    {
+      'year': 2023,
+      'cited_by_count': 2
+    },
+    {
+      'year': 2021,
+      'cited_by_count': 1
+    },
+    {
+      'year': 2020,
+      'cited_by_count': 2
+    },
+    {
+      'year': 2019,
+      'cited_by_count': 3
+    },
+    {
+      'year': 2018,
+      'cited_by_count': 2
+    },
+    {
+      'year': 2017,
+      'cited_by_count': 4
+    },
+    {
+      'year': 2016,
+      'cited_by_count': 3
+    },
+    {
+      'year': 2015,
+      'cited_by_count': 2
+    },
+    {
+      'year': 2014,
+      'cited_by_count': 5
+    },
+    {
+      'year': 2013,
+      'cited_by_count': 2
+    },
+    {
+      'year': 2012,
+      'cited_by_count': 1
+    }
+  ],
+  'updated_date': '2025-11-06T04:12:42.849631',
+  'created_date': '2025-10-10T00:00:00'
+}
