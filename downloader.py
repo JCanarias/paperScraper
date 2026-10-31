@@ -12,6 +12,8 @@ TIMEOUT_SECONDS = 30
 DOWNLOAD_TIMEOUT_SECONDS = 120
 MAX_FILENAME_LENGTH = 150
 EXTENSIONS = ("pdf", "epub")
+# Characters that are not allowed in Windows file names.
+FORBIDDEN_CHARACTERS = r'[<>:"/\\|?*\n\r\t]'
 
 # Many journal websites send an incomplete certificate chain. Browsers complete it on their own,
 # and so does the operating system's certificate store, so we check certificates with it.
@@ -81,13 +83,41 @@ def add_metadata(file_path: Path, paper: Paper) -> None:
         print(f"  Aviso: no se han podido escribir los metadatos: {error}")
 
 
+def tag_repeated_filenames(papers: list[Paper]) -> None:
+    """Give a different file name to works of the same list that would share one.
+
+    The one with the lowest DOI keeps the plain name, so the choice is the same every time
+    and the files downloaded before keep being found.
+    """
+    groups: dict[str, list[Paper]] = {}
+    for paper in papers:
+        paper.filename_tag = None
+        groups.setdefault(build_filename(paper).lower(), []).append(paper)
+
+    for group in groups.values():
+        group.sort(key=lambda paper: (paper.doi or "~", paper.title or ""))
+        for paper in group[1:]:
+            paper.filename_tag = paper.doi or paper.source or "2"
+    # Two works without DOI from the same source could still clash; number them.
+    groups = {}
+    for paper in papers:
+        groups.setdefault(build_filename(paper).lower(), []).append(paper)
+    for group in groups.values():
+        group.sort(key=lambda paper: (paper.title or "", paper.source or "", paper.language or ""))
+        for number, paper in enumerate(group[1:], start=2):
+            paper.filename_tag = f"{paper.filename_tag or ''} {number}".strip()
+
+
 def build_filename(paper: Paper, extension: str = "pdf") -> str:
     # Remove characters that are not allowed in file names.
-    title = re.sub(r'[<>:"/\\|?*\n\r\t]', "", paper.title).strip()
+    title = re.sub(FORBIDDEN_CHARACTERS, "", paper.title or "Sin título").strip()
     title = title[:MAX_FILENAME_LENGTH]
     # The same book often exists in several languages (Gutenberg, Internet Archive...).
     if paper.source and paper.language:
         title = f"{title} ({paper.language})"
+    if paper.filename_tag:
+        tag = re.sub(FORBIDDEN_CHARACTERS, "_", paper.filename_tag)
+        title = f"{title} [{tag}]"
     # Old books (Gutenberg, Internet Archive...) often have no known year.
     if paper.year is None:
         return f"{title}.{extension}"

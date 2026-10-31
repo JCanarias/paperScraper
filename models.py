@@ -26,6 +26,8 @@ class Paper:
     isbn: str | None = None
     # Where the work was found ("Gutenberg", "Internet Archive"...), shown when choosing books.
     source: str | None = None
+    # Added to the file name when another work in the same list would get the same one.
+    filename_tag: str | None = None
 
     def best_date(self) -> str | None:
         # With only a year, Calibre fills the month and day with today's; January 1st is less misleading.

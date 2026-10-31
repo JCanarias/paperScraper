@@ -102,7 +102,7 @@ class OpenAlexSource(Source):
         # The journal (or repository) where the work was published; it can be unknown.
         location_source = (work["primary_location"] or {}).get("source") or {}
         return Paper(
-            title=work["display_name"],
+            title=self._title(work),
             year=work["publication_year"],
             doi=self._extract_doi(work),
             pdf_urls=self._find_pdf_urls(work),
@@ -113,6 +113,12 @@ class OpenAlexSource(Source):
             publisher=location_source.get("host_organization_name"),
             language=work.get("language"),
         )
+
+    def _title(self, work: dict) -> str:
+        # Some works have no title; the DOI (or id) keeps their file names different.
+        if work.get("display_name"):
+            return work["display_name"]
+        return f"Sin título ({self._extract_doi(work) or work['id'].rsplit('/', 1)[-1]})"
 
     def _extract_doi(self, work: dict) -> str | None:
         # OpenAlex gives the DOI as a URL ("https://doi.org/10.xxx"); we keep only the DOI itself.

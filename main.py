@@ -4,7 +4,7 @@ from pathlib import Path
 
 import questionary
 
-from downloader import add_metadata, download_paper, downloaded_file, is_downloaded
+from downloader import add_metadata, download_paper, downloaded_file, is_downloaded, tag_repeated_filenames
 from models import Author, Paper
 from pdf_finders.core import CoreFinder
 from pdf_finders.custom_legal_source import CustomLegalSourceFinder
@@ -227,7 +227,9 @@ def search_by_title(source: OpenAlexSource) -> None:
         print(f"\nHay {total} coincidencias en OpenAlex; se usan las {len(papers)} más relevantes.")
     print(f"\nSe han encontrado {len(papers)} obras en OpenAlex y {len(books)} libros en otras bibliotecas.\n")
 
-    selected_papers = confirm_papers_to_download(papers + books)
+    found = papers + books
+    tag_repeated_filenames(found)
+    selected_papers = confirm_papers_to_download(found)
     if not selected_papers:
         print("No se descarga nada.")
         return
@@ -286,6 +288,7 @@ def search_by_author(source: OpenAlexSource) -> None:
         papers += books
         if not papers:
             continue
+        tag_repeated_filenames(papers)
 
         selected_papers = confirm_papers_to_download(papers)
         if not selected_papers:
@@ -346,6 +349,7 @@ def tag_downloaded_files(source: OpenAlexSource) -> None:
 
         print(f"\n{folder} ({len(downloaded)} archivos)")
         papers = complete_details(source, papers)
+        tag_repeated_filenames(papers)
         update_papers(papers_file, papers)
 
         for paper in papers:
