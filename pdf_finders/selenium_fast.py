@@ -1,6 +1,7 @@
 """Sci-hub finder rápido - click manual en CAPTCHA, optimizado para velocidad"""
 import time
-from urllib.parse import quote
+import html as html_lib
+from urllib.parse import quote, urldefrag, urljoin
 
 try:
     from selenium import webdriver
@@ -33,7 +34,7 @@ class SeleniumSciHubFinder(DoiPdfFinder):
             results = {}
             for i, doi in enumerate(dois, 1):
                 print(f"  [{i}/{len(dois)}] {doi}...", end=" ", flush=True)
-                pdf_url = self._get_pdf(doi)
+                pdf_url = self._absolute_url(self._get_pdf(doi))
                 if pdf_url:
                     results[doi] = [pdf_url]
                     print("✓")
@@ -92,6 +93,13 @@ class SeleniumSciHubFinder(DoiPdfFinder):
             time.sleep(0.3)
         except Exception as e:
             print(f"[SCIHUB] ⚠ Error: {e}")
+
+    def _absolute_url(self, url: str | None) -> str | None:
+        """Sci-hub a veces da enlaces relativos ("/storage/...pdf#view=FitH&amp;...")."""
+        if not url:
+            return None
+        url = urljoin("https://sci-hub.su/", html_lib.unescape(url))
+        return urldefrag(url).url
 
     def _get_pdf(self, doi: str) -> str | None:
         """Obtiene PDF rápidamente"""

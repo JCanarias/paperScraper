@@ -1,130 +1,130 @@
-import os
-from dotenv import load_dotenv
 import requests
-import questionary
-import nameparser
-import pandas as pd
-from datetime import date, datetime
 
-from models import author
-from models.author import Author
-from models.text import Text
-from .base import InformationSource
+from config import OPENALEX_API_KEY, OPENALEX_API_URL
+from models import Author, Paper
+from sources.base import Source
 
-load_dotenv()
+MAX_RESULTS_PER_PAGE = 200
+# OpenAlex accepts up to 100 values in one filter, but long URLs fail, so we stay lower.
+MAX_DOIS_PER_REQUEST = 50
 
-class OpenAlexSource(InformationSource):
-    def __init__(self):
-        """Session?"""
-        self.BASE_URL: str | None = os.getenv("OPEN_ALEX_API_BASE_URL")
-        self.API_KEY: str | None = os.getenv("OPEN_ALEX_API_KEY")
-        self.ID_BASE_URL: str | None = os.getenv("OPEN_ALEX_BASE_ID_URL")
-        self.DATABASE_PATH: str | None = os.getenv("WORKS_DATABASE_PATH")
-        
-    def _generate_text(self, result: dict, author: Author) -> Text:
-        title: str = result["title"]
-        open_alex_id: str = result["id"].rsplit("/", 1)[-1]
-        doi: str = result["doi"]
-        published: date = result["publication_date"].date()
-        languages: list = list(result["language"])
-        
-        new_text = Text(
-            title=title,
-            author=author, # OJO, NO TIENE POR QUÉ SER EL AUTOR, PODRÍA SER TRADUCTOR, ETC
-            open_alex_id=open_alex_id,
-            doi=doi,
-            published=published,
-            languages=languages
-        )
-        
-        return new_text
-    
-    def get_authors(self, query: str) -> list[Author]:
-        return super().get_authors(query)
-    
-    def get_texts(self, query: str) -> list[Text]:
-        return super().get_texts(query)
-    
-    def get_authors_texts(self, author: Author) -> list[Text]:
-        url: str = "https://api.openalex.org/works"
-        params: dict = {
-            "api_key": self.API_KEY,
-            "filter": f"authorships.author.id:{author.open_alex_id}"
-            
-        }
-        response = requests.get(
-            url = url,
-            params = params
-            )
-        
-        works_in_db: pd.DataFrame = pd.read_csv(filepath_or_buffer=self.DATABASE_PATH)
-        downloaded_rows = works_in_db[works_in_db["downloaded"]]
-        registered_isbns: list[str] = works_in_db["isbn"].dropna().to_list()
-        registered_dois: list[str] = works_in_db["doi"].dropna().to_list()
-        registered_dois: list[str] = works_in_db["issn"].dropna().to_list()
-        
-        # Create texts objects and checkbox options.
-        # Check if texts are already in database or in calibre.
-        found_texts: list[Text] = list()
-        found_texts_titles: list[questionary.Choice] = list()
+
+class OpenAlexSource(Source):
+    """Papers and academic books; its works already include the open access books (DOAB, OAPEN...)."""
+
+    def find_authors(self, name: str) -> list[Author]:
+        response = self._get(f"{OPENALEX_API_URL}/authors", params={"search": name})
+        response.raise_for_status()
+
+        authors = []
         for result in response.json()["results"]:
-            new_text = self._generate_text(result, author)
-            title: str = result["title"]
-            open_alex_id: str = result["id"].rsplit("/", 1)[-1]
-            doi: str = result["doi"]
-            
-            found_texts.append(new_text)
-            found_texts_titles.append(result["title"])
-            print(f"{result['publication_year']} - {result['title']}")
-        
-        return super().get_authors_texts(author)
-    
-    def identify_author(self) -> Author:
-        search_input = input("Type in your author: ")
-        params: dict = {
-            "api_key": self.API_KEY,
-            "search": search_input,
-            "sort": "cited_by_count:desc"
-            }
-        response = requests.get(
-            url = str(self.BASE_URL + "/authors"),
-            params = params)
-        results: dict = response.json()["results"]
-                
-        name_choices: list[questionary.Choice] = list()
-        for result in results:
-            name: str = result["display_name"]
-            id: str = result["id"].rsplit("/", 1)[-1]
-            new_choice = questionary.Choice(name, value = id)
-            name_choices.append(new_choice)
-        
-        author_selection = questionary.select(
-            message = "Which author did you mean?",
-            choices = name_choices
-        ).ask()
-        
-        identified_author_response: dict = {}
-        for result in results:
-            if result["id"] == f"{self.ID_BASE_URL}{author_selection}":
-                identified_author_response = result
-        
-        full_name = nameparser.HumanName(identified_author_response["full_name"])
-        identified_author = Author(
-            name = str(full_name.first + full_name.middle),
-            surnames = full_name.last_list,
-            birth_date = None,
-            death_date = None,
-            birth_place = None,
-            death_place = None,
-            open_alex_id = identified_author_response["id"].rsplit("/", 1)[-1],
-            orcid = None
+            # Some authors have no known institution, and OpenAlex returns null instead of [].
+            known_institutions = result["last_known_institutions"] or []
+            institutions = [institution["display_name"] for institution in known_institutions]
+            authors.append(Author(
+                id=result["id"],
+                name=result["display_name"],
+                works_count=result["works_count"],
+                institutions=institutions,
+            ))
+        return authors
+
+    def get_papers(self, author: Author) -> list[Paper]:
+        papers = []
+
+        # OpenAlex returns results in pages; the cursor tells us where the next page starts.
+        cursor = "*"
+        while cursor:
+            response = self._get(f"{OPENALEX_API_URL}/works", params={
+                "filter": f"author.id:{author.id}",
+                "per-page": MAX_RESULTS_PER_PAGE,
+                "cursor": cursor,
+            })
+            response.raise_for_status()
+            data = response.json()
+
+            papers.extend(self._build_paper(result) for result in data["results"])
+            cursor = data["meta"]["next_cursor"]
+
+        return papers
+
+    def get_top_papers(self, author: Author, limit: int) -> list[Paper]:
+        # The most cited works tell best who an author is, and only need one request.
+        response = self._get(f"{OPENALEX_API_URL}/works", params={
+            "filter": f"author.id:{author.id}",
+            "sort": "cited_by_count:desc",
+            "per-page": limit,
+        })
+        response.raise_for_status()
+        return [self._build_paper(result) for result in response.json()["results"]]
+
+    def search_papers_by_title(self, words: str, limit: int) -> tuple[list[Paper], int]:
+        # Commas separate filters in OpenAlex, so they can't appear inside the search text.
+        words = words.replace(",", " ")
+        papers = []
+        total = 0
+
+        cursor = "*"
+        while cursor and len(papers) < limit:
+            response = self._get(f"{OPENALEX_API_URL}/works", params={
+                "filter": f"title.search:{words}",
+                "sort": "relevance_score:desc",
+                "per-page": MAX_RESULTS_PER_PAGE,
+                "cursor": cursor,
+            })
+            response.raise_for_status()
+            data = response.json()
+
+            papers.extend(self._build_paper(result) for result in data["results"])
+            total = data["meta"]["count"]
+            cursor = data["meta"]["next_cursor"]
+
+        return papers[:limit], total
+
+    def get_papers_by_dois(self, dois: list[str]) -> list[Paper]:
+        papers = []
+        for start in range(0, len(dois), MAX_DOIS_PER_REQUEST):
+            dois_group = dois[start:start + MAX_DOIS_PER_REQUEST]
+            response = self._get(f"{OPENALEX_API_URL}/works", params={
+                "filter": "doi:" + "|".join(dois_group),
+                "per-page": MAX_DOIS_PER_REQUEST,
+            })
+            response.raise_for_status()
+            papers.extend(self._build_paper(result) for result in response.json()["results"])
+        return papers
+
+    def _get(self, url: str, params: dict) -> requests.Response:
+        if OPENALEX_API_KEY:
+            params = {**params, "api_key": OPENALEX_API_KEY}
+        return requests.get(url, params=params)
+
+    def _build_paper(self, work: dict) -> Paper:
+        # The journal (or repository) where the work was published; it can be unknown.
+        location_source = (work["primary_location"] or {}).get("source") or {}
+        return Paper(
+            title=work["display_name"],
+            year=work["publication_year"],
+            doi=self._extract_doi(work),
+            pdf_urls=self._find_pdf_urls(work),
+            authors=[authorship["author"]["display_name"] for authorship in work["authorships"]],
+            publication_date=work.get("publication_date"),
+            journal=location_source.get("display_name"),
+            volume=(work.get("biblio") or {}).get("volume"),
+            publisher=location_source.get("host_organization_name"),
+            language=work.get("language"),
         )
-        
-        print(f"selected author: {author_selection}")
-        return identified_author
-        
-    
-    def search_by_author(self) -> list[Text]:
-        author = self.identify_author()
-        texts = self.get_authors_texts(author = author)
-        print(author)
+
+    def _extract_doi(self, work: dict) -> str | None:
+        # OpenAlex gives the DOI as a URL ("https://doi.org/10.xxx"); we keep only the DOI itself.
+        if work["doi"] is None:
+            return None
+        return work["doi"].removeprefix("https://doi.org/")
+
+    def _find_pdf_urls(self, work: dict) -> list[str]:
+        # A work can be hosted in several places (journal, repositories...).
+        # We collect every direct PDF link, skipping repeated ones.
+        pdf_urls = []
+        for location in work["locations"]:
+            if location["pdf_url"] and location["pdf_url"] not in pdf_urls:
+                pdf_urls.append(location["pdf_url"])
+        return pdf_urls

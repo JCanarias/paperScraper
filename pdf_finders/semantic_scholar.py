@@ -10,6 +10,7 @@ MAX_DOIS_PER_REQUEST = 500
 # Without an API key, Semantic Scholar often rejects requests for a few seconds
 # when it is busy (HTTP 429), so we wait and try again.
 TOO_MANY_REQUESTS = 429
+BAD_REQUEST = 400
 MAX_ATTEMPTS = 5
 SECONDS_BETWEEN_ATTEMPTS = 5
 
@@ -60,6 +61,9 @@ class SemanticScholarFinder(DoiPdfFinder):
             if response.status_code == TOO_MANY_REQUESTS:
                 time.sleep(SECONDS_BETWEEN_ATTEMPTS)
                 continue
+            # When it knows none of the DOIs, it answers with an error instead of a list of None.
+            if response.status_code == BAD_REQUEST and "No valid paper ids" in response.text:
+                return [None] * len(dois)
 
             response.raise_for_status()
             return response.json()

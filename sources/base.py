@@ -1,23 +1,33 @@
 from abc import ABC, abstractmethod
 
-from models.author import Author
-from models.text import Text
+from models import Author, Paper
 
-class InformationSource(ABC):
-    """Source of information, retrieves data."""
 
-    @abstractmethod
-    def get_authors(self, query: str) -> list[Author]:
-        """Retrieves authors from string input."""
+class Source(ABC):
+    """Common interface that every paper source must implement."""
 
     @abstractmethod
-    def get_authors_texts(self, author: Author) -> list[Text]:
-        """Returns texts by an author."""
+    def find_authors(self, name: str) -> list[Author]:
+        """Return the authors whose name matches the given one."""
 
     @abstractmethod
-    def get_texts(self, query: str) -> list[Text]:
-        """Returns texts from string input."""
-        
+    def get_papers(self, author: Author) -> list[Paper]:
+        """Return all the papers written by the given author."""
+
     @abstractmethod
-    def search_by_author(self) -> list[Text]:
-        """Returns texts from author search"""
+    def search_papers_by_title(self, words: str, limit: int) -> tuple[list[Paper], int]:
+        """Return up to `limit` papers whose title contains the given words, and the total number of matches."""
+
+
+class BookSource(ABC):
+    """Common interface for the places where we look for whole books."""
+
+    name: str
+
+    @abstractmethod
+    def search_books_by_author(self, author_name: str, limit: int) -> list[Paper]:
+        """Return up to `limit` books written by the given author."""
+
+    @abstractmethod
+    def search_books_by_title(self, words: str, limit: int) -> list[Paper]:
+        """Return up to `limit` books whose title contains the given words."""
