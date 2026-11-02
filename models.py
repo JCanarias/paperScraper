@@ -30,6 +30,10 @@ class Paper:
     source: str | None = None
     # Added to the file name when another work in the same list would get the same one.
     filename_tag: str | None = None
+    # The user chose to download it; the ones still without a file can be retried later.
+    wanted: bool = False
+    # Already in the user's Calibre library (checked at every search).
+    in_calibre: bool = False
 
     def all_identifiers(self) -> dict[str, str]:
         """DOI, ISBN and the other ids of the work, with the lowercase scheme names Calibre uses."""

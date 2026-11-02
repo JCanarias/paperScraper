@@ -37,6 +37,9 @@ class InternetArchiveSource(BookSource):
     def search_books_by_title(self, words: str, limit: int) -> list[Paper]:
         return self._search(f"title:({clean_words(words)})", limit, limit, lambda item: True)
 
+    def search_books_by_isbn(self, isbn: str, limit: int) -> list[Paper]:
+        return self._search(f"isbn:({clean_words(isbn)})", limit, limit, lambda item: True)
+
     def _search(self, query: str, rows: int, limit: int, keep: Callable[[dict], bool]) -> list[Paper]:
         excluded = " AND ".join(f"-collection:{collection}" for collection in LENDING_COLLECTIONS)
         response = requests.get(f"{INTERNET_ARCHIVE_URL}/advancedsearch.php", params={

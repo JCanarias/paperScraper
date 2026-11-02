@@ -7,6 +7,9 @@ from models import Author, Paper
 from sources.base import Source
 
 MAX_RESULTS_PER_PAGE = 200
+# Sites whose terms forbid downloading their files with programs (PhilPapers allows it only
+# with written permission); their links are left out, and other copies are tried instead.
+NO_PROGRAM_DOWNLOADS = ("philpapers.org", "philarchive.org", "jstor.org", "muse.jhu.edu")
 # "https://arxiv.org/abs/1706.03762v5" -> "1706.03762"; old ids look like "math/0211159".
 ARXIV_LINK = re.compile(r"arxiv\.org/abs/(.+?)(?:v\d+)?/?(?:[?#]|$)", re.I)
 # OpenAlex accepts up to 100 values in one filter, but long URLs fail, so we stay lower.
@@ -85,6 +88,27 @@ class OpenAlexSource(Source):
 
         return papers[:limit], total
 
+    def search_works(self, text: str, limit: int) -> list[Paper]:
+        """The works that best match a free text (a bibliography reference, say), best first."""
+        response = self._get(f"{OPENALEX_API_URL}/works", params={
+            # Commas separate filters in OpenAlex, and some symbols break the search.
+            "search": re.sub(r"[,:;()\[\]{}\"]", " ", text),
+            "per-page": limit,
+        })
+        response.raise_for_status()
+        return [self._build_paper(result) for result in response.json()["results"]]
+
+    def search_by_title_and_author(self, title: str, surname: str, limit: int) -> list[Paper]:
+        """Works with those words in the title and an author with that surname, the most relevant first."""
+        # Commas separate filters in OpenAlex, so they can't appear inside the search text.
+        title = re.sub(r"[,:;()\[\]{}\"|]", " ", title)
+        response = self._get(f"{OPENALEX_API_URL}/works", params={
+            "filter": f"title.search:{title},raw_author_name.search:{surname}",
+            "per-page": limit,
+        })
+        response.raise_for_status()
+        return [self._build_paper(result) for result in response.json()["results"]]
+
     def get_papers_by_dois(self, dois: list[str]) -> list[Paper]:
         papers = []
         for start in range(0, len(dois), MAX_DOIS_PER_REQUEST):
@@ -155,6 +179,7 @@ class OpenAlexSource(Source):
         # We collect every direct PDF link, skipping repeated ones.
         pdf_urls = []
         for location in work["locations"]:
-            if location["pdf_url"] and location["pdf_url"] not in pdf_urls:
-                pdf_urls.append(location["pdf_url"])
+            url = location["pdf_url"]
+            if url and url not in pdf_urls and not any(host in url for host in NO_PROGRAM_DOWNLOADS):
+                pdf_urls.append(url)
         return pdf_urls

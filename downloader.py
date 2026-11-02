@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 import truststore
@@ -23,6 +24,15 @@ truststore.inject_into_ssl()
 
 # Some websites reject requests that don't look like they come from a browser.
 HEADERS = {"User-Agent": "Mozilla/5.0"}
+# Wikimedia asks programs to say who they are; to a browser-like name its EPUB maker
+# answers with a "you're not a bot?" page instead of the book.
+HONEST_HEADERS = {"User-Agent": "paperScraper/1.0 (https://github.com/JCanarias/paperScraper)"}
+HONEST_HOSTS = ("ws-export.wmcloud.org", "wikisource.org")
+
+
+def headers_for(url: str) -> dict[str, str]:
+    host = urlparse(url).hostname or ""
+    return HONEST_HEADERS if host.endswith(HONEST_HOSTS) else HEADERS
 
 
 def download_paper(paper: Paper, folder: Path, urls: list[str]) -> bool:
@@ -60,7 +70,7 @@ def is_downloaded(paper: Paper, folder: Path) -> bool:
 
 
 def download_file(url: str, paper: Paper, folder: Path) -> None:
-    response = requests.get(url, headers=HEADERS, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+    response = requests.get(url, headers=headers_for(url), timeout=DOWNLOAD_TIMEOUT_SECONDS)
     response.raise_for_status()
 
     # Some links return a web page (a login, a captcha...) instead of the file.
