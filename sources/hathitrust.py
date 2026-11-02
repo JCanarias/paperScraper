@@ -59,7 +59,7 @@ class HathiTrustSource(BookSource):
                     "limit": min(limit, 50),
                 },
                 timeout=TIMEOUT_SECONDS,
-                headers={"User-Agent": "paperScraper/1.0 (research tool)"},
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
             )
             response.raise_for_status()
         except requests.RequestException as e:

@@ -24,8 +24,8 @@ from sources.base import BookSource
 from sources.internet_archive import InternetArchiveSource
 from sources.names import name_words, readable_name, same_author
 
-# BNE public data CSV URL
-BNE_CATALOGUE_URL = "https://datosabiertos.bne.es/resource/t31p_catalogo_de_fondos_en_dominio_publico_o_libremente_distribuibles/descarga/t31p_catalogo_de_fondos_en_dominio_publico_o_libremente_distribuibles_csv.csv"
+# BNE public data CSV URL - direct download link
+BNE_CATALOGUE_URL = "https://datosabiertos.bne.es/catalogo/catalog/download/2cf7bea9-6f97-4e2e-ad9b-5c1da2c5a8b2/Catalogo%20BNE%20-%20Obras%20en%20dominio%20publico.csv"
 BNE_RECORD_URL = "https://bndigital.bne.es/details/"
 TIMEOUT_SECONDS = 30
 RATE_LIMIT_DELAY = 1.0  # Respectful delay

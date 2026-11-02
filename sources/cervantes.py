@@ -16,10 +16,11 @@ from models import Paper
 from sources.base import BookSource
 from sources.names import name_words, readable_name
 
-SPARQL_ENDPOINT = "https://www.cervantesvirtuaix.com/sparql"
+SPARQL_ENDPOINT = "https://www.cervantesvirtual.com/api/sparql"
 CERVANTES_BASE_URL = "https://www.cervantesvirtual.com"
 TIMEOUT_SECONDS = 30
-RATE_LIMIT_DELAY = 0.5  # Respectful delay between requests
+RATE_LIMIT_DELAY = 1.0  # Respectful delay between requests
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
 
 class CervantesSource(BookSource):
@@ -84,7 +85,7 @@ class CervantesSource(BookSource):
                     "format": "json",
                 },
                 timeout=TIMEOUT_SECONDS,
-                headers={"User-Agent": "paperScraper/1.0 (research tool)"},
+                headers=HEADERS,
             )
             response.raise_for_status()
         except requests.RequestException as e:
