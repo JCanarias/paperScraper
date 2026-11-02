@@ -53,6 +53,8 @@ WIKISOURCE = WikisourceSource()
 BOOK_SOURCES: list[BookSource] = [
     INTERNET_ARCHIVE, GutenbergSource(), WIKISOURCE, DoabSource(), DialnetSource(), PhilArchiveSource(),
 ]
+# Libraries that didn't answer in this run; they are not asked again until the program restarts.
+UNREACHABLE_SOURCES: set[str] = set()
 # The user's Calibre library, when .env has its address; set in main().
 calibre: CalibreLibrary | None = None
 
@@ -231,9 +233,17 @@ def quit_finder_drivers() -> None:
 def find_books(search: Callable[[BookSource], list[Paper]]) -> list[Paper]:
     books = []
     for book_source in BOOK_SOURCES:
+        if book_source.name in UNREACHABLE_SOURCES:
+            continue
         print(f"Buscando libros en {book_source.name}...", end=" ", flush=True)
         try:
             found = search(book_source)
+        except requests.RequestException as error:
+            # A library that doesn't answer (Gutendex is often overloaded) would make
+            # every following search wait again, so it is skipped until the program restarts.
+            UNREACHABLE_SOURCES.add(book_source.name)
+            print(f"no responde; se salta en el resto de búsquedas ({type(error).__name__})")
+            continue
         except Exception as error:
             print(f"ha fallado ({error})")
             continue

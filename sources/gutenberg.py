@@ -7,7 +7,8 @@ from models import Paper
 from sources.base import BookSource
 from sources.names import name_words, readable_name, same_author
 
-TIMEOUT_SECONDS = 60
+# Gutendex answers in a second or not at all; waiting longer only delays the search.
+TIMEOUT_SECONDS = 20
 # Gutendex gives 32 books per page; a common surname can match hundreds of them.
 MAX_PAGES = 5
 EPUB = "application/epub+zip"
