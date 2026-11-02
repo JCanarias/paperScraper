@@ -18,6 +18,7 @@ TIMEOUT_SECONDS = 120
 SECONDS_BETWEEN_PAGES = 3
 SECONDS_AFTER_REFUSAL = 120
 MAX_REFUSALS = 6
+RETRY_STATUSES = (429, 500, 502, 503, 504)
 HEADERS = {"User-Agent": "paperScraper/1.0 (https://github.com/JCanarias/paperScraper)"}
 NAMESPACES = {
     "oai": "http://www.openarchives.org/OAI/2.0/",
@@ -86,11 +87,12 @@ def request_page(base_url: str, params: dict) -> ET.Element:
     for refusal in range(1, MAX_REFUSALS + 1):
         try:
             response = requests.get(base_url, params=params, headers=HEADERS, timeout=TIMEOUT_SECONDS)
-            # 503 (and 429) mean "too many requests, come back later".
-            if response.status_code not in (429, 503):
+            # 429 and 503 mean "too many requests, come back later"; 500, 502 and 504 are
+            # passing failures of the server (Dialnet's proxy gives 502 when it is overloaded).
+            if response.status_code not in RETRY_STATUSES:
                 response.raise_for_status()
                 return ET.fromstring(response.content)
-        except requests.ConnectionError:
+        except (requests.ConnectionError, requests.Timeout):
             pass
         wait = SECONDS_AFTER_REFUSAL * refusal
         print(f"  El servidor pide esperar; se reintenta en {wait // 60} min...")

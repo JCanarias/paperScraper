@@ -8,7 +8,7 @@ import requests
 from bibliography import find_works, read_references
 from calibre_library import CalibreLibrary
 from downloader import add_metadata, download_paper, downloaded_file, is_downloaded, tag_repeated_filenames
-from duplicates import merge_duplicates
+from duplicates import combine, merge_duplicates, shared_surname, title_words
 from manual_download import download_by_hand
 from models import Author, Paper
 from pdf_finders.core import CoreFinder
@@ -55,6 +55,9 @@ BOOK_SOURCES: list[BookSource] = [
 ]
 # Libraries that didn't answer in this run; they are not asked again until the program restarts.
 UNREACHABLE_SOURCES: set[str] = set()
+# Catalogues kept in the local index, and how many of their works are compared with each pending one.
+INDEXED_SOURCE_TYPES = (DoabSource, DialnetSource, PhilArchiveSource)
+MAX_CATALOGUE_CANDIDATES = 5
 # The user's Calibre library, when .env has its address; set in main().
 calibre: CalibreLibrary | None = None
 
@@ -453,6 +456,41 @@ def search_by_bibliography(source: OpenAlexSource) -> None:
                              search_folder(BIBLIOGRAPHY_FOLDER, file_path.stem))
 
 
+def add_catalogue_copies(papers: list[Paper]) -> int:
+    """Add to each work the links of its copies in the local catalogues (DOAB, Dialnet, PhilArchive).
+
+    Those catalogues grow after every harvest, so a work that had no file before may have one now.
+    Return how many works got new links.
+    """
+    catalogues = [source for source in BOOK_SOURCES
+                  if isinstance(source, INDEXED_SOURCE_TYPES) and source.index.count() > 0]
+    improved = 0
+    for paper in papers:
+        if not paper.title:
+            continue
+        links_before = len(paper.pdf_urls)
+        # The subtitle is often written differently (or missing) in each catalogue.
+        main_title = paper.title.split(":")[0]
+        for catalogue in catalogues:
+            try:
+                candidates = catalogue.search_books_by_title(main_title, MAX_CATALOGUE_CANDIDATES)
+            except Exception:
+                continue
+            for candidate in candidates:
+                if same_main_work(paper, candidate):
+                    combine(paper, candidate)
+        improved += len(paper.pdf_urls) > links_before
+    return improved
+
+
+def same_main_work(paper: Paper, candidate: Paper) -> bool:
+    if title_words(paper.title.split(":")[0]) != title_words((candidate.title or "").split(":")[0]):
+        return False
+    if paper.year and candidate.year and abs(paper.year - candidate.year) > 2:
+        return False
+    return shared_surname(paper.authors, candidate.authors)
+
+
 def retry_pending() -> None:
     """Look again for the works chosen in earlier searches that still have no file."""
     for papers_file in find_saved_lists(LIBRARY_FOLDER):
@@ -466,6 +504,9 @@ def retry_pending() -> None:
             continue
 
         print(f"\n{folder}: {len(pending)} pendientes")
+        found = add_catalogue_copies(pending)
+        if found:
+            print(f"Encontradas en los catálogos locales: {found}")
         try:
             find_and_download_pdfs(pending, folder)
         except KeyboardInterrupt:
