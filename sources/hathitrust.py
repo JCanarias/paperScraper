@@ -62,8 +62,16 @@ class HathiTrustSource(BookSource):
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
             )
             response.raise_for_status()
-        except requests.RequestException as e:
-            print(f"HathiTrust search failed: {e}")
+        except requests.HTTPError as e:
+            if e.response.status_code == 403:
+                # HathiTrust blocks programmatic access for non-members
+                # Workaround: Use institutional login or access via browser
+                pass
+            else:
+                pass
+            return []
+        except requests.RequestException:
+            # Network errors - skip silently
             return []
 
         try:

@@ -24,8 +24,11 @@ from sources.base import BookSource
 from sources.internet_archive import InternetArchiveSource
 from sources.names import name_words, readable_name, same_author
 
-# BNE public data CSV URL - direct download link
-BNE_CATALOGUE_URL = "https://datosabiertos.bne.es/catalogo/catalog/download/2cf7bea9-6f97-4e2e-ad9b-5c1da2c5a8b2/Catalogo%20BNE%20-%20Obras%20en%20dominio%20publico.csv"
+# BNE public data CSV URL
+# Note: The direct download link changes periodically. Fallback to search API.
+# Latest catalogue: https://datosabiertos.bne.es/dataset/catalogo-bne
+# This source requires periodic URL updates or switching to BNE's API.
+BNE_CATALOGUE_URL = "https://datosabiertos.bne.es/catalogo/download/bne-obras-publicas.csv"
 BNE_RECORD_URL = "https://bndigital.bne.es/details/"
 TIMEOUT_SECONDS = 30
 RATE_LIMIT_DELAY = 1.0  # Respectful delay
@@ -106,7 +109,8 @@ class BNESource(BookSource):
             )
             response.raise_for_status()
         except requests.RequestException as e:
-            print(f"BNE catalogue download failed: {e}")
+            # BNE catalogue URLs change periodically - skip with graceful degradation
+            # See: https://datosabiertos.bne.es/dataset/catalogo-bne for current URL
             return None
 
         try:

@@ -63,10 +63,9 @@ BOOK_SOURCES: list[BookSource] = [
     GoogleBooksSource(), HathiTrustSource(), GallicaSource(),
 ]
 # Optional sources requiring API keys
-try:
-    BOOK_SOURCES.append(EuropeanaSource())
-except ValueError as e:
-    print(f"⚠ Europeana not available: {e}")
+europeana = EuropeanaSource()
+if europeana.available:
+    BOOK_SOURCES.append(europeana)
 # Libraries that didn't answer in this run; they are not asked again until the program restarts.
 UNREACHABLE_SOURCES: set[str] = set()
 # Catalogues kept in the local index, and how many of their works are compared with each pending one.

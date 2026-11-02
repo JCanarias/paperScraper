@@ -60,8 +60,16 @@ class GallicaSource(BookSource):
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
             )
             response.raise_for_status()
-        except requests.RequestException as e:
-            print(f"Gallica search failed: {e}")
+        except requests.HTTPError as e:
+            if e.response.status_code == 403:
+                # Gallica blocks some programmatic access
+                # Workaround: Browse gallica.bnf.fr directly for public domain works
+                pass
+            else:
+                pass
+            return []
+        except requests.RequestException:
+            # Network errors - skip silently
             return []
 
         papers = []

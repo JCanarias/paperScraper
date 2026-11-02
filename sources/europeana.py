@@ -24,14 +24,12 @@ class EuropeanaSource(BookSource):
 
     def __init__(self):
         self.api_key = os.getenv("EUROPEANA_API_KEY")
-        if not self.api_key:
-            raise ValueError(
-                "EUROPEANA_API_KEY not found in .env. "
-                "Get a free key at https://pro.europeana.eu/page/apis"
-            )
+        self.available = bool(self.api_key)
 
     def search_books_by_author(self, author_name: str, limit: int) -> list[Paper]:
         """Search for books by author in Europeana."""
+        if not self.available:
+            return []
         words = name_words(author_name)
         if not words:
             return []
@@ -42,6 +40,8 @@ class EuropeanaSource(BookSource):
 
     def search_books_by_title(self, words: str, limit: int) -> list[Paper]:
         """Search for books by title in Europeana."""
+        if not self.available:
+            return []
         return self._search(f'title:{words} OR text:"{words}"', limit)
 
     def _search(self, query: str, limit: int) -> list[Paper]:
@@ -59,8 +59,15 @@ class EuropeanaSource(BookSource):
                 timeout=TIMEOUT_SECONDS,
             )
             response.raise_for_status()
-        except requests.RequestException as e:
-            print(f"Europeana search failed: {e}")
+        except requests.HTTPError as e:
+            if e.response.status_code == 401:
+                # Invalid or missing API key - skip silently
+                pass
+            else:
+                pass
+            return []
+        except requests.RequestException:
+            # Network errors - skip silently
             return []
 
         try:

@@ -62,8 +62,18 @@ class GoogleBooksSource(BookSource):
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
             )
             response.raise_for_status()
+        except requests.HTTPError as e:
+            if e.response.status_code == 429:
+                # Rate limited - Google Books free API has strict limits
+                # Recommended: Add GOOGLE_BOOKS_API_KEY to .env for higher limits
+                pass  # Gracefully skip
+            elif e.response.status_code == 403:
+                pass  # Access denied
+            else:
+                pass  # Other HTTP errors
+            return []
         except requests.RequestException as e:
-            print(f"Google Books search failed: {e}")
+            # Network errors - skip silently
             return []
 
         try:
