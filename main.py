@@ -17,6 +17,7 @@ from pdf_finders.semantic_scholar import SemanticScholarFinder
 from pdf_finders.selenium_fast import SeleniumSciHubFinder
 from pdf_finders.unpaywall import UnpaywallFinder
 from sources.base import BookSource
+from sources.cervantes import CervantesSource
 from sources.dialnet import DialnetSource
 from sources.doab import DoabSource
 from sources.europeana import EuropeanaSource
@@ -53,6 +54,7 @@ WIKISOURCE = WikisourceSource()
 # DOAB, Dialnet and PhilArchive are searched in local copies of their catalogues (update_indexes.py).
 BOOK_SOURCES: list[BookSource] = [
     INTERNET_ARCHIVE, GutenbergSource(), WIKISOURCE, DoabSource(), DialnetSource(), PhilArchiveSource(),
+    CervantesSource(),
 ]
 # Optional sources requiring API keys
 try:
