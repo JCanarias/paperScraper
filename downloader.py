@@ -11,6 +11,8 @@ TIMEOUT_SECONDS = 30
 # Whole books can be large and come from slow servers.
 DOWNLOAD_TIMEOUT_SECONDS = 120
 MAX_FILENAME_LENGTH = 150
+MAX_AUTHORS_IN_FILENAME = 2
+MAX_AUTHORS_LENGTH = 60
 EXTENSIONS = ("pdf", "epub")
 # Characters that are not allowed in Windows file names.
 FORBIDDEN_CHARACTERS = r'[<>:"/\\|?*\n\r\t]'
@@ -44,6 +46,11 @@ def downloaded_file(paper: Paper, folder: Path) -> Path | None:
     for extension in EXTENSIONS:
         file_path = folder / build_filename(paper, extension)
         if file_path.exists():
+            return file_path
+        # Files downloaded before the authors were in the name get the new name now.
+        old_path = folder / build_filename(paper, extension, with_authors=False)
+        if old_path != file_path and old_path.exists():
+            old_path.rename(file_path)
             return file_path
     return None
 
@@ -108,10 +115,14 @@ def tag_repeated_filenames(papers: list[Paper]) -> None:
             paper.filename_tag = f"{paper.filename_tag or ''} {number}".strip()
 
 
-def build_filename(paper: Paper, extension: str = "pdf") -> str:
+def build_filename(paper: Paper, extension: str = "pdf", with_authors: bool = True) -> str:
+    """Year - Title - Authors.pdf. Without authors, it is the name files had before."""
     # Remove characters that are not allowed in file names.
     title = re.sub(FORBIDDEN_CHARACTERS, "", paper.title or "Sin título").strip()
     title = title[:MAX_FILENAME_LENGTH]
+    authors = filename_authors(paper.authors)
+    if with_authors and authors:
+        title = f"{title} - {authors}"
     # The same book often exists in several languages (Gutenberg, Internet Archive...).
     if paper.source and paper.language:
         title = f"{title} ({paper.language})"
@@ -122,3 +133,15 @@ def build_filename(paper: Paper, extension: str = "pdf") -> str:
     if paper.year is None:
         return f"{title}.{extension}"
     return f"{paper.year} - {title}.{extension}"
+
+
+def filename_authors(authors: list[str]) -> str:
+    # Like Calibre, two authors are joined with "&"; with more, only the first one and "et al.".
+    names = [re.sub(FORBIDDEN_CHARACTERS, "", name).strip() for name in authors]
+    names = [name for name in names if name]
+    if len(names) > MAX_AUTHORS_IN_FILENAME:
+        # Without the final dot, so the name doesn't end in "et al..pdf".
+        text = f"{names[0]} et al"
+    else:
+        text = " & ".join(names)
+    return text[:MAX_AUTHORS_LENGTH].strip()

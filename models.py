@@ -24,10 +24,17 @@ class Paper:
     publisher: str | None = None
     language: str | None = None
     isbn: str | None = None
+    # Other identifiers ("openalex", "pmid", "issn", "gutenberg"...); Calibre keeps them all.
+    identifiers: dict[str, str] = field(default_factory=dict)
     # Where the work was found ("Gutenberg", "Internet Archive"...), shown when choosing books.
     source: str | None = None
     # Added to the file name when another work in the same list would get the same one.
     filename_tag: str | None = None
+
+    def all_identifiers(self) -> dict[str, str]:
+        """DOI, ISBN and the other ids of the work, with the lowercase scheme names Calibre uses."""
+        identifiers = {"doi": self.doi, "isbn": self.isbn, **self.identifiers}
+        return {scheme.lower(): value for scheme, value in identifiers.items() if value}
 
     def best_date(self) -> str | None:
         # With only a year, Calibre fills the month and day with today's; January 1st is less misleading.

@@ -1,3 +1,5 @@
+import re
+
 import requests
 
 from config import OPENALEX_API_KEY, OPENALEX_API_URL
@@ -5,6 +7,8 @@ from models import Author, Paper
 from sources.base import Source
 
 MAX_RESULTS_PER_PAGE = 200
+# "https://arxiv.org/abs/1706.03762v5" -> "1706.03762"; old ids look like "math/0211159".
+ARXIV_LINK = re.compile(r"arxiv\.org/abs/(.+?)(?:v\d+)?/?(?:[?#]|$)", re.I)
 # OpenAlex accepts up to 100 values in one filter, but long URLs fail, so we stay lower.
 MAX_DOIS_PER_REQUEST = 50
 
@@ -112,7 +116,27 @@ class OpenAlexSource(Source):
             volume=(work.get("biblio") or {}).get("volume"),
             publisher=location_source.get("host_organization_name"),
             language=work.get("language"),
+            identifiers=self._identifiers(work, location_source),
         )
+
+    def _identifiers(self, work: dict, location_source: dict) -> dict[str, str]:
+        # OpenAlex gives most ids as links ("https://pubmed.ncbi.nlm.nih.gov/16873662"); we keep the id.
+        ids = work.get("ids") or {}
+        identifiers = {
+            "openalex": work["id"].rsplit("/", 1)[-1],
+            "pmid": (ids.get("pmid") or "").rstrip("/").rsplit("/", 1)[-1],
+            "pmcid": (ids.get("pmcid") or "").rstrip("/").rsplit("/", 1)[-1],
+            "issn": location_source.get("issn_l") or "",
+            "arxiv": self._arxiv_id(work),
+        }
+        return {scheme: value for scheme, value in identifiers.items() if value}
+
+    def _arxiv_id(self, work: dict) -> str:
+        for location in work.get("locations") or []:
+            match = ARXIV_LINK.search(location.get("landing_page_url") or "")
+            if match:
+                return match.group(1)
+        return ""
 
     def _title(self, work: dict) -> str:
         # Some works have no title; the DOI (or id) keeps their file names different.

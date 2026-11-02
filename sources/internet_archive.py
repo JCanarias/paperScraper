@@ -81,6 +81,7 @@ class InternetArchiveSource(BookSource):
             language=first(item.get("language"), None),
             isbn=clean_isbn(first(item.get("isbn"), None)),
             source=self.name,
+            identifiers={"internet_archive": item["identifier"]},
         )
 
 

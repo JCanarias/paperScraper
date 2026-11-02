@@ -64,4 +64,5 @@ class GutenbergSource(BookSource):
             authors=[readable_name(author["name"]) for author in result["authors"]],
             language=(result["languages"] or [None])[0],
             source=self.name,
+            identifiers={"gutenberg": str(result["id"])},
         )

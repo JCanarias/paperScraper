@@ -84,17 +84,18 @@ def build_xmp_packet(paper: Paper, now: datetime) -> bytes:
     if paper.language:
         add_list(dc, "dc:language", [paper.language])
 
-    identifiers = {"doi": paper.doi, "isbn": paper.isbn}
-    identifiers = {scheme: value for scheme, value in identifiers.items() if value}
+    identifiers = paper.all_identifiers()
 
     xmp = new_description(rdf)
     ET.SubElement(xmp, tag("xmp:MetadataDate")).text = now.isoformat(timespec="seconds")
     if identifiers:
         add_identifiers(xmp, identifiers)
-        # The same identifiers again, in the second place Calibre looks.
-        prism = new_description(rdf)
-        for scheme, value in identifiers.items():
-            ET.SubElement(prism, tag(f"prism:{scheme}")).text = value
+        # DOI and ISBN again, in the second place Calibre looks.
+        prism_identifiers = {scheme: identifiers[scheme] for scheme in ("doi", "isbn") if scheme in identifiers}
+        if prism_identifiers:
+            prism = new_description(rdf)
+            for scheme, value in prism_identifiers.items():
+                ET.SubElement(prism, tag(f"prism:{scheme}")).text = value
 
     if paper.journal:
         add_series(new_description(rdf), paper.journal, series_index(paper.volume))

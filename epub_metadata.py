@@ -56,13 +56,11 @@ def rewrite_opf(opf: bytes, paper: Paper) -> bytes:
             for value in values:
                 add_field(metadata, name, value)
 
-    identifiers = {"ISBN": paper.isbn, "DOI": paper.doi}
-    for scheme, value in identifiers.items():
-        if value:
-            remove_identifier(metadata, scheme, main_identifier)
-            # Calibre reads the scheme from opf:scheme, and also from the "urn:isbn:" style prefix.
-            identifier = add_field(metadata, "identifier", f"urn:{scheme.lower()}:{value}")
-            identifier.set(f"{{{OPF}}}scheme", scheme)
+    for scheme, value in paper.all_identifiers().items():
+        remove_identifier(metadata, scheme, main_identifier)
+        # Calibre reads the scheme from opf:scheme, and also from the "urn:isbn:" style prefix.
+        identifier = add_field(metadata, "identifier", f"urn:{scheme}:{value}")
+        identifier.set(f"{{{OPF}}}scheme", scheme.upper())
 
     if paper.journal:
         set_series(metadata, paper.journal, paper.volume)
