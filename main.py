@@ -192,11 +192,16 @@ def find_and_download_pdfs(papers: list[Paper], folder: Path) -> None:
         pending = [paper for paper in papers if not is_downloaded(paper, folder)]
         if not pending:
             break
+        if type(finder).__name__ in UNREACHABLE_SOURCES:
+            continue
 
         try:
             found_urls = finder.find_pdf_urls(pending)
         except Exception as error:
-            print(f"Aviso: {type(finder).__name__} ha fallado: {error}")
+            # A service that is down or refusing us (CORE timeouts, Semantic Scholar's limits)
+            # would make every following search wait again, so it is skipped until the restart.
+            UNREACHABLE_SOURCES.add(type(finder).__name__)
+            print(f"Aviso: {type(finder).__name__} ha fallado y se salta en el resto de búsquedas: {error}")
             continue
 
         for position, urls in found_urls.items():
@@ -322,44 +327,44 @@ def search_by_author(source: OpenAlexSource) -> None:
         print("No se descarga nada.")
         return
 
+    # OpenAlex often splits one person into several profiles ("Lourdes Flamarique",
+    # "L. Flamarique-Zaratiegui"...), so the chosen ones become a single list and folder,
+    # named after the profile with most works.
+    main_author = max(selected_authors, key=lambda author: author.works_count)
+    print(f"\n{'='*60}")
+    print(f"Procesando: {', '.join(author.name for author in selected_authors)}")
+    print(f"{'='*60}")
+
+    papers: list[Paper] = []
     for author in selected_authors:
-        print(f"\n{'='*60}")
-        print(f"Procesando: {author.name}")
-        print(f"{'='*60}")
+        papers += source.get_papers(author)
+    openalex_count = len(papers)
+    for name in dict.fromkeys(author.name for author in selected_authors):
+        papers += find_books(lambda book_source: book_source.search_books_by_author(name, MAX_BOOKS_PER_SOURCE))
+    print(f"\nSe han encontrado {openalex_count} obras en OpenAlex y "
+          f"{len(papers) - openalex_count} en otras bibliotecas.")
+    papers = prepare_list(papers)
+    if not papers:
+        return
+    folder = author_folder(main_author)
+    keep_earlier_wanted(papers, folder)
 
-        papers = source.get_papers(author)
-        books = find_books(
-            lambda book_source: book_source.search_books_by_author(author.name, MAX_BOOKS_PER_SOURCE)
-        )
-        print(f"\nSe han encontrado {len(papers)} obras en OpenAlex y {len(books)} libros en otras bibliotecas.\n")
-        papers = prepare_list(papers + books)
-        if not papers:
-            continue
-        folder = author_folder(author)
-        keep_earlier_wanted(papers, folder)
-
-        selected_papers = confirm_papers_to_download(papers)
-        if not selected_papers:
-            print("No se descarga nada.")
-            continue
-
-        for paper in selected_papers:
-            paper.wanted = True
-        try:
-            print(f"\nBuscando y descargando ({len(selected_papers)} obras)...")
-            find_and_download_pdfs(selected_papers, folder)
-        except KeyboardInterrupt:
-            print("\n\n⏹ Búsqueda interrumpida por el usuario")
-            quit_finder_drivers()
-            return
-
-        print_download_summary(selected_papers, folder)
-        after_download(selected_papers, folder)
-        # The list keeps every work found, so the files downloaded in earlier searches stay in it.
+    # Everything that isn't in Calibre yet is downloaded; the list keeps every work found.
+    to_download = [paper for paper in papers if not paper.in_calibre]
+    for paper in to_download:
+        paper.wanted = True
+    try:
+        print(f"\nBuscando y descargando {len(to_download)} obras de {len(papers)}...")
+        find_and_download_pdfs(to_download, folder)
+    except KeyboardInterrupt:
+        print("\n\n⏹ Búsqueda interrumpida por el usuario")
+        quit_finder_drivers()
+    finally:
+        print_download_summary(to_download, folder)
+        after_download(to_download, folder)
         for paper in papers:
             paper.downloaded = is_downloaded(paper, folder)
-
-        papers_file = save_papers(author, papers, folder)
+        papers_file = save_papers(main_author, papers, folder)
         print(f"✓ Lista guardada en {papers_file}\n")
 
 
@@ -391,17 +396,47 @@ def work_key(paper: Paper) -> str:
 
 
 def after_download(papers: list[Paper], folder: Path) -> None:
-    """Offer to download by hand what is still missing, and to send the new files to Calibre."""
-    missing = [paper for paper in papers if not is_downloaded(paper, folder)]
-    if missing and questionary.confirm(
-        f"¿Abrir en el navegador las {len(missing)} obras sin archivo para descargarlas tú?", default=False,
-    ).ask():
-        print(f"✓ Descargadas a mano: {download_by_hand(missing, folder)}")
-
+    """Send the new files to Calibre and say how to get the ones still missing."""
     if calibre:
         new = [paper for paper in papers if not paper.in_calibre and is_downloaded(paper, folder)]
-        if new and questionary.confirm(f"¿Subir a Calibre los {len(new)} archivos nuevos?", default=True).ask():
+        if new:
+            print(f"\nSubiendo a Calibre {len(new)} archivos nuevos...")
             upload_files(new, folder)
+    missing = sum(not is_downloaded(paper, folder) for paper in papers)
+    if missing:
+        print(f"{missing} obras quedan pendientes: se reintentarán con \"Reintentar las obras pendientes\","
+              " y las que solo se pueden bajar desde el navegador, con \"Descargar a mano las pendientes\".")
+
+
+def download_pending_by_hand() -> None:
+    """Open in the browser, one by one, the chosen works that still have no file."""
+    for papers_file in find_saved_lists(LIBRARY_FOLDER):
+        folder = papers_file.parent
+        papers = load_papers(papers_file)
+        if calibre:
+            calibre.mark_papers(papers)
+        pending = [paper for paper in papers
+                   if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)]
+        if not pending:
+            continue
+        print(f"\n{folder}: {len(pending)} pendientes")
+        choice = questionary.select(
+            "¿Qué hacer con esta carpeta?",
+            choices=[
+                questionary.Choice("Abrirlas en el navegador", value="open"),
+                questionary.Choice("Pasar a la siguiente carpeta", value="next"),
+                questionary.Choice("Terminar", value="stop"),
+            ],
+        ).ask()
+        if choice in ("stop", None):
+            return
+        if choice == "next":
+            continue
+        download_by_hand(pending, folder)
+        after_download(pending, folder)
+        for paper in papers:
+            paper.downloaded = is_downloaded(paper, folder)
+        update_papers(papers_file, papers)
 
 
 def upload_files(papers: list[Paper], folder: Path) -> None:
@@ -447,11 +482,9 @@ def search_by_bibliography(source: OpenAlexSource) -> None:
         return
 
     papers = prepare_list(papers)
-    print(f"\nSe han encontrado {len(papers)} obras.\n")
-    selected_papers = confirm_papers_to_download(papers)
-    if not selected_papers:
-        print("No se descarga nada.")
-        return
+    # The bibliography is already a choice, so everything not in Calibre is downloaded.
+    selected_papers = [paper for paper in papers if not paper.in_calibre]
+    print(f"\nSe han encontrado {len(papers)} obras; se descargan las {len(selected_papers)} que no están en Calibre.")
     download_and_save_search(f"Bibliografía: {file_path.name}", selected_papers,
                              search_folder(BIBLIOGRAPHY_FOLDER, file_path.stem))
 
@@ -610,6 +643,7 @@ def main() -> None:
             questionary.Choice("Por palabras del título", value="title"),
             questionary.Choice("Desde una bibliografía (BibTeX, RIS o texto)", value="bibliography"),
             questionary.Choice("Reintentar las obras pendientes", value="retry"),
+            questionary.Choice("Descargar a mano las pendientes (en el navegador)", value="by_hand"),
             questionary.Choice("Subir a Calibre lo ya descargado", value="upload"),
             questionary.Choice("Actualizar los catálogos locales (Dialnet, PhilArchive, DOAB)", value="indexes"),
             questionary.Choice("Poner metadatos a los archivos ya descargados", value="tag"),
@@ -624,6 +658,8 @@ def main() -> None:
         search_by_bibliography(source)
     elif choice == "retry":
         retry_pending()
+    elif choice == "by_hand":
+        download_pending_by_hand()
     elif choice == "upload":
         upload_downloaded()
     elif choice == "indexes":

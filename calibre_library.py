@@ -17,7 +17,7 @@ from requests.auth import AuthBase, HTTPBasicAuth, HTTPDigestAuth
 
 from duplicates import title_words
 from models import Paper
-from sources.names import name_words
+from sources.names import surnames
 
 TIMEOUT_SECONDS = 60
 UPLOAD_TIMEOUT_SECONDS = 300
@@ -138,8 +138,8 @@ def title_keys(title: str | None, authors: list[str]) -> set[str]:
     words = " ".join(title_words(title or ""))
     if not words:
         return set()
-    surnames = {name_words(author)[-1] for author in authors if name_words(author)}
-    return {f"{words}|{surname}" for surname in surnames}
+    every_surname = {word for author in authors for word in surnames(author)}
+    return {f"{words}|{surname}" for surname in every_surname}
 
 
 def book_fields(paper: Paper) -> dict:

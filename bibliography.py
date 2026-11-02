@@ -17,7 +17,7 @@ from config import UNPAYWALL_EMAIL
 from duplicates import title_words
 from models import Paper
 from sources.internet_archive import InternetArchiveSource
-from sources.names import name_words
+from sources.names import name_words, surnames
 from sources.openalex import OpenAlexSource
 
 TIMEOUT_SECONDS = 60
@@ -217,8 +217,8 @@ def matches(paper: Paper, reference: Reference) -> bool:
         return False
     # A review repeats the title of the work but has another author, and records without
     # authors are usually the journal's own notes, so an author's surname must be in the reference.
-    surnames = {name_words(author)[-1] for author in paper.authors if name_words(author)}
-    return bool(surnames & set(name_words(reference.text)))
+    every_surname = {word for author in paper.authors for word in surnames(author)}
+    return bool(every_surname & set(name_words(reference.text)))
 
 
 def readable(name: str) -> str:

@@ -6,12 +6,18 @@ and identifiers of the others, so every place where the file might be is tried.
 """
 import re
 import unicodedata
+from difflib import SequenceMatcher
 
 from models import Paper
-from sources.names import name_words
+from sources.names import surnames
 
 # DOI prefixes of preprint servers: arXiv, Zenodo, SSRN, OSF (and its PsyArXiv, SocArXiv...), bioRxiv.
 PREPRINT_DOI_PREFIXES = ("10.48550/", "10.5281/", "10.2139/", "10.31219/", "10.31234/", "10.31235/", "10.1101/")
+# Titles at least this long are rarely shared by two different works of the same author.
+MIN_WORDS_FOR_SAME_TITLE = 4
+# From this length, two titles count as the same with 90 % of their words in common and in order.
+MIN_WORDS_FOR_SIMILAR_TITLE = 6
+MIN_TITLE_SIMILARITY = 0.9
 PREPRINT_JOURNAL_WORDS = ("arxiv", "zenodo", "ssrn", "preprint", "rxiv", "repository", "repositorio")
 
 
@@ -30,6 +36,8 @@ def merge_duplicates(papers: list[Paper]) -> list[Paper]:
 
 
 def same_work(one: Paper, other: Paper) -> bool:
+    if republished(one, other):
+        return True
     if one.doi and other.doi:
         if one.doi.lower() == other.doi.lower():
             return True
@@ -47,6 +55,34 @@ def same_work(one: Paper, other: Paper) -> bool:
     if one.year and other.year and abs(one.year - other.year) > 2:
         return False
     return True
+
+
+def republished(one: Paper, other: Paper) -> bool:
+    """The same work recorded twice by its journal, with two DOIs and two years.
+
+    Some journals gave new DOIs to their old issues (Anuario Filosófico in 2018), and OpenAlex
+    keeps both records. A long title, the same author and the same journal (or an unknown one)
+    are enough to tell; short titles like "Presentación" repeat in every issue, so they don't count.
+    """
+    words = title_words(one.title or "")
+    other_words = title_words(other.title or "")
+    if len(words) < MIN_WORDS_FOR_SAME_TITLE or not similar_titles(words, other_words):
+        return False
+    if not shared_surname(one.authors, other.authors):
+        return False
+    if one.journal and other.journal and title_words(one.journal) != title_words(other.journal):
+        return False
+    return True
+
+
+def similar_titles(words: list[str], other_words: list[str]) -> bool:
+    # Long titles are written with small differences in each catalogue (an article,
+    # quotes, a dropped word): "la solución de Kant al amor..." / "solución de Kant al amor...".
+    if words == other_words:
+        return True
+    if min(len(words), len(other_words)) < MIN_WORDS_FOR_SIMILAR_TITLE:
+        return False
+    return SequenceMatcher(None, words, other_words).ratio() >= MIN_TITLE_SIMILARITY
 
 
 def is_preprint(paper: Paper) -> bool:
@@ -81,10 +117,10 @@ def combine(best: Paper, other: Paper) -> None:
 
 
 def shared_surname(authors: list[str], other_authors: list[str]) -> bool:
-    surnames = {name_words(author)[-1] for author in authors if name_words(author)}
-    other_surnames = {name_words(author)[-1] for author in other_authors if name_words(author)}
+    own = {word for author in authors for word in surnames(author)}
+    other = {word for author in other_authors for word in surnames(author)}
     # Without authors on either side we can't tell; the title alone isn't enough.
-    return bool(surnames & other_surnames)
+    return bool(own & other)
 
 
 def title_words(title: str) -> list[str]:

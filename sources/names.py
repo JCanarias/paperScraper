@@ -49,3 +49,15 @@ def same_first_name(one: str, other: str) -> bool:
     if len(one) == 1 or len(other) == 1:
         return one[0] == other[0]
     return one == other
+
+
+def surnames(name: str) -> set[str]:
+    """The words of a name that can be a surname: all but the first name and the initials.
+
+    Spanish names have two surnames and catalogues often keep only one, so "Lourdes Flamarique"
+    and "Lourdes Flamarique Zaratiegui" share "flamarique".
+    """
+    words = name_words(name)
+    if len(words) <= 1:
+        return set(words)
+    return {word for word in words[1:] if len(word) > 1}

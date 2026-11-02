@@ -37,6 +37,14 @@ Estado a 2 de noviembre de 2026.
 - **Por qué no el resto:** sus PDFs están detrás de Cloudflare. Sus condiciones prohíben descargarlos con programas "salvo permiso expreso por escrito".
 - **Qué se puede hacer:** escribirles (philpapers.org/help/contact.html). Pide permiso para descargar en abierto con esta herramienta personal, de poco volumen, o que la dejen pasar. Si lo dan, se añade la descarga directa.
 
+### Revistas de la Universidad de Navarra (Anuario Filosófico, Scripta Theologica…)
+- **Qué hay:** OpenAlex las marca bien como de acceso libre y da el enlace al PDF.
+- **Por qué no:** `revistas.unav.edu` pone la verificación de Cloudflare (Turnstile) delante de cada PDF, y su repositorio `dadun.unav.edu` rechaza a los programas (403). En la búsqueda de Lourdes Flamarique fueron 21 de los 31 enlaces que fallaron.
+- **Qué se puede hacer:**
+  1. "Descargar a mano las pendientes": abre cada obra en el navegador y recoge el archivo de Descargas.
+  2. Cuando termine la cosecha de Dialnet, "Reintentar las obras pendientes" por si Dialnet tiene copia de alguna.
+  3. Escribir al Servicio de Publicaciones de la Universidad de Navarra (rhereder@unav.es, el contacto que aparece en su página de verificación) y pedir que dejen pasar a esta herramienta.
+
 ### HathiTrust
 - **Por qué no:** su política de uso prohíbe expresamente automatizar descargas. Su API de datos se retiró en 2024.
 - **Qué se puede hacer:**

@@ -2,11 +2,15 @@ import re
 
 import requests
 
+from duplicates import title_words
+
 from config import OPENALEX_API_KEY, OPENALEX_API_URL
 from models import Author, Paper
 from sources.base import Source
 
 MAX_RESULTS_PER_PAGE = 200
+# Journal pages that OpenAlex records as works ("Consejo editorial", "Índice"...).
+NOT_WORKS = "type:!paratext"
 # Sites whose terms forbid downloading their files with programs (PhilPapers allows it only
 # with written permission); their links are left out, and other copies are tried instead.
 NO_PROGRAM_DOWNLOADS = ("philpapers.org", "philarchive.org", "jstor.org", "muse.jhu.edu")
@@ -43,14 +47,14 @@ class OpenAlexSource(Source):
         cursor = "*"
         while cursor:
             response = self._get(f"{OPENALEX_API_URL}/works", params={
-                "filter": f"author.id:{author.id}",
+                "filter": f"author.id:{author.id},{NOT_WORKS}",
                 "per-page": MAX_RESULTS_PER_PAGE,
                 "cursor": cursor,
             })
             response.raise_for_status()
             data = response.json()
 
-            papers.extend(self._build_paper(result) for result in data["results"])
+            papers.extend(paper for paper in map(self._build_paper, data["results"]) if not is_front_matter(paper.title))
             cursor = data["meta"]["next_cursor"]
 
         return papers
@@ -58,7 +62,7 @@ class OpenAlexSource(Source):
     def get_top_papers(self, author: Author, limit: int) -> list[Paper]:
         # The most cited works tell best who an author is, and only need one request.
         response = self._get(f"{OPENALEX_API_URL}/works", params={
-            "filter": f"author.id:{author.id}",
+            "filter": f"author.id:{author.id},{NOT_WORKS}",
             "sort": "cited_by_count:desc",
             "per-page": limit,
         })
@@ -74,7 +78,7 @@ class OpenAlexSource(Source):
         cursor = "*"
         while cursor and len(papers) < limit:
             response = self._get(f"{OPENALEX_API_URL}/works", params={
-                "filter": f"title.search:{words}",
+                "filter": f"title.search:{words},{NOT_WORKS}",
                 "sort": "relevance_score:desc",
                 "per-page": MAX_RESULTS_PER_PAGE,
                 "cursor": cursor,
@@ -82,7 +86,7 @@ class OpenAlexSource(Source):
             response.raise_for_status()
             data = response.json()
 
-            papers.extend(self._build_paper(result) for result in data["results"])
+            papers.extend(paper for paper in map(self._build_paper, data["results"]) if not is_front_matter(paper.title))
             total = data["meta"]["count"]
             cursor = data["meta"]["next_cursor"]
 
@@ -183,3 +187,20 @@ class OpenAlexSource(Source):
             if url and url not in pdf_urls and not any(host in url for host in NO_PROGRAM_DOWNLOADS):
                 pdf_urls.append(url)
         return pdf_urls
+
+
+# Pages of a journal issue that OpenAlex often records as articles; their words, without accents.
+# A single word must be the whole title ("Índice"); a phrase may begin it ("Consejo editorial Director").
+FRONT_MATTER_TITLES = ("indice", "sumario", "creditos", "contents", "editorial board")
+FRONT_MATTER_STARTS = (
+    "consejo editorial", "comite editorial", "comite cientifico", "redaccion administracion",
+    "normas para autores", "normas de publicacion", "table of contents", "front matter",
+    "back matter", "instructions for authors", "issue information",
+)
+
+
+def is_front_matter(title: str | None) -> bool:
+    words = " ".join(title_words(title or ""))
+    return words in FRONT_MATTER_TITLES or any(
+        words == phrase or words.startswith(phrase + " ") for phrase in FRONT_MATTER_STARTS
+    )

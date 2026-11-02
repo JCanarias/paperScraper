@@ -1,6 +1,7 @@
+import html
 import re
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 import truststore
@@ -11,6 +12,8 @@ from models import Paper
 TIMEOUT_SECONDS = 30
 # Whole books can be large and come from slow servers.
 DOWNLOAD_TIMEOUT_SECONDS = 120
+# The tags that point to the file are in the <head>, at the start of the page.
+PAGE_HEAD_LENGTH = 200_000
 MAX_FILENAME_LENGTH = 150
 MAX_AUTHORS_IN_FILENAME = 2
 MAX_AUTHORS_LENGTH = 60
@@ -73,14 +76,34 @@ def download_file(url: str, paper: Paper, folder: Path) -> None:
     response = requests.get(url, headers=headers_for(url), timeout=DOWNLOAD_TIMEOUT_SECONDS)
     response.raise_for_status()
 
-    # Some links return a web page (a login, a captcha...) instead of the file.
+    # Repositories and journals often link to the work's page instead of its file; that page
+    # says where the file is in a "citation_pdf_url" tag (the one Google Scholar reads).
     extension = file_extension(response.content)
+    if extension is None:
+        pdf_link = pdf_link_in_page(response)
+        if pdf_link and pdf_link != url:
+            response = requests.get(pdf_link, headers=headers_for(pdf_link), timeout=DOWNLOAD_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            extension = file_extension(response.content)
+
+    # Some links return a web page (a login, a captcha...) instead of the file.
     if extension is None:
         raise ValueError("el enlace no devuelve un PDF ni un EPUB")
 
     file_path = folder / build_filename(paper, extension)
     file_path.write_bytes(response.content)
     add_metadata(file_path, paper)
+
+
+def pdf_link_in_page(response: requests.Response) -> str | None:
+    if "html" not in response.headers.get("content-type", ""):
+        return None
+    for tag in re.findall(r"<meta[^>]+>", response.text[:PAGE_HEAD_LENGTH], re.I):
+        if re.search(r'name=["\'](?:citation_pdf_url|bepress_citation_pdf_url|eprints\.document_url)["\']', tag, re.I):
+            link = re.search(r'content=["\']([^"\']+)["\']', tag, re.I)
+            if link:
+                return urljoin(response.url, html.unescape(link.group(1)))
+    return None
 
 
 def file_extension(content: bytes) -> str | None:

@@ -154,10 +154,8 @@ class SeleniumSciHubFinder(DoiPdfFinder):
             if m:
                 return m.group(1)
 
-            # Si cargó sin CAPTCHA, retornar URL base
-            if not "altcha-widget" in html:
-                return url
-
+            # Sin enlace al PDF, Sci-Hub no tiene la obra (antes se devolvía la página,
+            # que luego fallaba al descargar y contaba como "encontrado").
             return None
 
         except:
