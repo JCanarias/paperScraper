@@ -22,7 +22,9 @@ from sources.cervantes import CervantesSource
 from sources.dialnet import DialnetSource
 from sources.doab import DoabSource
 from sources.europeana import EuropeanaSource
+from sources.google_books import GoogleBooksSource
 from sources.gutenberg import GutenbergSource
+from sources.hathitrust import HathiTrustSource
 from sources.internet_archive import InternetArchiveSource
 from sources.names import name_words
 from sources.navarra import NavarraBooksSource
@@ -57,6 +59,7 @@ WIKISOURCE = WikisourceSource()
 BOOK_SOURCES: list[BookSource] = [
     INTERNET_ARCHIVE, GutenbergSource(), WIKISOURCE, DoabSource(), DialnetSource(), PhilArchiveSource(),
     CervantesSource(), BNESource(), NavarraBooksSource(),
+    GoogleBooksSource(), HathiTrustSource(),
 ]
 # Optional sources requiring API keys
 try:
