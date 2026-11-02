@@ -19,6 +19,7 @@ from pdf_finders.unpaywall import UnpaywallFinder
 from sources.base import BookSource
 from sources.dialnet import DialnetSource
 from sources.doab import DoabSource
+from sources.europeana import EuropeanaSource
 from sources.gutenberg import GutenbergSource
 from sources.internet_archive import InternetArchiveSource
 from sources.names import name_words
@@ -53,6 +54,11 @@ WIKISOURCE = WikisourceSource()
 BOOK_SOURCES: list[BookSource] = [
     INTERNET_ARCHIVE, GutenbergSource(), WIKISOURCE, DoabSource(), DialnetSource(), PhilArchiveSource(),
 ]
+# Optional sources requiring API keys
+try:
+    BOOK_SOURCES.append(EuropeanaSource())
+except ValueError as e:
+    print(f"⚠ Europeana not available: {e}")
 # Libraries that didn't answer in this run; they are not asked again until the program restarts.
 UNREACHABLE_SOURCES: set[str] = set()
 # Catalogues kept in the local index, and how many of their works are compared with each pending one.
