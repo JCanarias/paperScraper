@@ -101,7 +101,8 @@ class BNESource(BookSource):
             response = requests.get(
                 BNE_CATALOGUE_URL,
                 timeout=TIMEOUT_SECONDS,
-                headers={"User-Agent": "paperScraper/1.0 (research tool)"},
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                verify=False  # BNE has SSL issues sometimes
             )
             response.raise_for_status()
         except requests.RequestException as e:

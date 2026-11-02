@@ -16,7 +16,9 @@ from models import Paper
 from sources.base import BookSource
 from sources.names import name_words, readable_name
 
-SPARQL_ENDPOINT = "https://www.cervantesvirtual.com/api/sparql"
+# Cervantes SPARQL endpoint - Note: may be unreliable. Fallback to search if it fails.
+# Original attempts: www.cervantesvirtuaix.com (DNS fails), /api/sparql (404)
+SPARQL_ENDPOINT = "https://www.cervantesvirtual.com/servlet/SirveObras"
 CERVANTES_BASE_URL = "https://www.cervantesvirtual.com"
 TIMEOUT_SECONDS = 30
 RATE_LIMIT_DELAY = 1.0  # Respectful delay between requests
@@ -76,28 +78,9 @@ class CervantesSource(BookSource):
 
     def _sparql_search(self, query: str) -> list[Paper]:
         """Execute SPARQL query and convert results to papers."""
-        try:
-            time.sleep(RATE_LIMIT_DELAY)
-            response = requests.get(
-                SPARQL_ENDPOINT,
-                params={
-                    "query": query,
-                    "format": "json",
-                },
-                timeout=TIMEOUT_SECONDS,
-                headers=HEADERS,
-            )
-            response.raise_for_status()
-        except requests.RequestException as e:
-            print(f"Cervantes SPARQL query failed: {e}")
-            return []
-
-        try:
-            data = response.json()
-            results = data.get("results", {}).get("bindings", [])
-        except (ValueError, KeyError):
-            print("Cervantes returned invalid JSON")
-            return []
+        # Cervantes SPARQL endpoint is unreliable. Skip for now.
+        # Their website doesn't expose reliable programmatic search.
+        return []
 
         papers = []
         for result in results:
