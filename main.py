@@ -25,6 +25,7 @@ from sources.europeana import EuropeanaSource
 from sources.gutenberg import GutenbergSource
 from sources.internet_archive import InternetArchiveSource
 from sources.names import name_words
+from sources.navarra import NavarraBooksSource
 from sources.openalex import OpenAlexSource
 from sources.philarchive import PhilArchiveSource
 from sources.wikisource import WikisourceSource
@@ -55,7 +56,7 @@ WIKISOURCE = WikisourceSource()
 # DOAB, Dialnet and PhilArchive are searched in local copies of their catalogues (update_indexes.py).
 BOOK_SOURCES: list[BookSource] = [
     INTERNET_ARCHIVE, GutenbergSource(), WIKISOURCE, DoabSource(), DialnetSource(), PhilArchiveSource(),
-    CervantesSource(), BNESource(),
+    CervantesSource(), BNESource(), NavarraBooksSource(),
 ]
 # Optional sources requiring API keys
 try:
