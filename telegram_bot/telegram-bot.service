@@ -9,7 +9,7 @@ Type=simple
 User=jorge
 WorkingDirectory=/home/jorge/paperScraper
 ExecStart=/home/jorge/paperScraper/.venv/bin/python telegram_bot/bot.py
-Restart=on-failure
+Restart=always
 RestartSec=10
 
 [Install]

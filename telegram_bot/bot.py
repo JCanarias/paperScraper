@@ -162,7 +162,8 @@ def main() -> None:
     ))
 
     log.info("Bot running. Saving %s files to %s", allowed_list(), DOWNLOAD_DIR)
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Process the messages that arrived while the bot was down (Telegram keeps them ~24 h).
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=False)
 
 
 if __name__ == "__main__":
