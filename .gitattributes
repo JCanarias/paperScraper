@@ -1,0 +1,5 @@
+# Scripts for the Linux tower: always with Linux line endings.
+*.sh text eol=lf
+*.service text eol=lf
+tower/tmux.conf text eol=lf
+*.timer text eol=lf

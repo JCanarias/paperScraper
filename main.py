@@ -33,7 +33,8 @@ from sources.openalex import OpenAlexSource
 from sources.philarchive import PhilArchiveSource
 from sources.wikisource import WikisourceSource
 from update_indexes import INDEXED_SOURCES, update_indexes
-from storage import find_saved_lists, load_papers, save_papers, save_search, update_papers
+from run_lock import daily_check_running
+from storage import find_saved_lists, load_content, load_papers, save_papers, save_search, set_follow, update_papers
 
 LIBRARY_FOLDER = Path("library")
 TITLE_SEARCH_FOLDER = LIBRARY_FOLDER / "Búsquedas por título"
@@ -73,6 +74,8 @@ INDEXED_SOURCE_TYPES = (DoabSource, DialnetSource, PhilArchiveSource)
 MAX_CATALOGUE_CANDIDATES = 5
 # The user's Calibre library, when .env has its address; set in main().
 calibre: CalibreLibrary | None = None
+# Called with (paper, folder) every time a work is downloaded (the daily check sends a Telegram message).
+DOWNLOAD_LISTENERS: list[Callable[[Paper, Path], None]] = []
 
 
 def author_label(author: Author) -> str:
@@ -227,7 +230,14 @@ def find_and_download_pdfs(papers: list[Paper], folder: Path) -> None:
 
 def try_download(paper: Paper, folder: Path, urls: list[str]) -> None:
     print(f"  Descargando {paper.doi or paper.title[:MAX_TITLE_LENGTH_SHOWN]}...", end=" ", flush=True)
-    print("✓" if download_paper(paper, folder, urls) else "✗")
+    downloaded = download_paper(paper, folder, urls)
+    print("✓" if downloaded else "✗")
+    if downloaded:
+        for listener in DOWNLOAD_LISTENERS:
+            try:
+                listener(paper, folder)
+            except Exception as error:
+                print(f"  Aviso: {error}")
 
 
 def author_folder(author: Author) -> Path:
@@ -348,15 +358,7 @@ def search_by_author(source: OpenAlexSource) -> None:
     print(f"Procesando: {', '.join(author.name for author in selected_authors)}")
     print(f"{'='*60}")
 
-    papers: list[Paper] = []
-    for author in selected_authors:
-        papers += source.get_papers(author)
-    openalex_count = len(papers)
-    for name in dict.fromkeys(author.name for author in selected_authors):
-        papers += find_books(lambda book_source: book_source.search_books_by_author(name, MAX_BOOKS_PER_SOURCE))
-    print(f"\nSe han encontrado {openalex_count} obras en OpenAlex y "
-          f"{len(papers) - openalex_count} en otras bibliotecas.")
-    papers = prepare_list(papers)
+    papers = prepare_list(find_author_works(source, selected_authors))
     if not papers:
         return
     folder = author_folder(main_author)
@@ -377,8 +379,21 @@ def search_by_author(source: OpenAlexSource) -> None:
         after_download(to_download, folder)
         for paper in papers:
             paper.downloaded = is_downloaded(paper, folder)
-        papers_file = save_papers(main_author, papers, folder)
+        papers_file = save_papers(main_author, papers, folder, selected_authors)
         print(f"✓ Lista guardada en {papers_file}\n")
+
+
+def find_author_works(source: OpenAlexSource, profiles: list[Author]) -> list[Paper]:
+    """Every work of these OpenAlex profiles (one person), and the books under their names."""
+    papers: list[Paper] = []
+    for author in profiles:
+        papers += source.get_papers(author)
+    openalex_count = len(papers)
+    for name in dict.fromkeys(author.name for author in profiles):
+        papers += find_books(lambda book_source: book_source.search_books_by_author(name, MAX_BOOKS_PER_SOURCE))
+    print(f"\nSe han encontrado {openalex_count} obras en OpenAlex y "
+          f"{len(papers) - openalex_count} en otras bibliotecas.")
+    return papers
 
 
 def prepare_list(papers: list[Paper]) -> list[Paper]:
@@ -633,6 +648,30 @@ def tag_downloaded_files(source: OpenAlexSource) -> None:
     print("\n✓ Metadatos escritos.")
 
 
+def choose_followed_authors() -> None:
+    """Choose the authors whose new works and files the daily check looks for."""
+    lists = [(papers_file, load_content(papers_file)) for papers_file in find_saved_lists(LIBRARY_FOLDER)]
+    author_lists = [(papers_file, content) for papers_file, content in lists if "author" in content]
+    if not author_lists:
+        print("Todavía no se ha buscado ningún autor.")
+        return
+    followed = questionary.checkbox(
+        "Marca los autores que se revisan cada día:",
+        choices=[
+            questionary.Choice(papers_file.parent.name, value=papers_file, checked=content.get("follow", False))
+            for papers_file, content in author_lists
+        ],
+        instruction="\n  ↑/↓ moverse · Espacio marcar · Enter confirmar",
+    ).ask()
+    # ask() returns None when the user presses Ctrl+C: nothing changes.
+    if followed is None:
+        return
+    for papers_file, content in author_lists:
+        if content.get("follow", False) != (papers_file in followed):
+            set_follow(papers_file, papers_file in followed)
+    print(f"✓ Se revisan cada día {len(followed)} autores.")
+
+
 def connect_calibre() -> None:
     global calibre
     calibre = CalibreLibrary.from_environment()
@@ -647,6 +686,8 @@ def connect_calibre() -> None:
 
 def main() -> None:
     source = OpenAlexSource()
+    if daily_check_running():
+        print("Aviso: la revisión diaria está en marcha; lo que hagas ahora puede chocar con ella.")
     connect_calibre()
 
     choice = questionary.select(
@@ -660,6 +701,7 @@ def main() -> None:
             questionary.Choice("Subir a Calibre lo ya descargado", value="upload"),
             questionary.Choice("Actualizar los catálogos locales (Dialnet, PhilArchive, DOAB)", value="indexes"),
             questionary.Choice("Poner metadatos a los archivos ya descargados", value="tag"),
+            questionary.Choice("Autores que seguir (revisión diaria)", value="follow"),
         ],
     ).ask()
 
@@ -679,6 +721,8 @@ def main() -> None:
         update_indexes(list(INDEXED_SOURCES))
     elif choice == "tag":
         tag_downloaded_files(source)
+    elif choice == "follow":
+        choose_followed_authors()
 
 
 if __name__ == "__main__":

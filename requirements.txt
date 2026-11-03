@@ -5,3 +5,4 @@ questionary
 pikepdf
 truststore
 lxml
+selenium
