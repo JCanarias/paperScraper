@@ -1,7 +1,7 @@
 # docker-compose.yml — paperScraper on the tower
 # Usage: ./update.sh   (or: docker compose up -d --build)
 #
-# web:   main.py's menu as a terminal in the browser, on localhost:7681 (cloudflared + Access bring it out).
+# web:   main.py's menu as a terminal in the browser, on localhost:7681 (cloudflared brings it out; it asks for a user and password).
 # daily: the daily check of the followed authors at 6:00 (Madrid), or on start if today's was missed.
 #
 # Both use the tower's network (network_mode: host), so Calibre's server is at localhost:8080, as for
@@ -34,6 +34,11 @@ services:
     <<: *paperscraper
     container_name: paperscraper_web
     command: ["bash", "/app/tower/start.sh"]
+    # The login of the web terminal, from .env (tower/start.sh refuses to start without it).
+    environment:
+      DISPLAY: ":99"
+      PAPERSCRAPER_WEB_USER: ${PAPERSCRAPER_WEB_USER:-}
+      PAPERSCRAPER_WEB_PASSWORD: ${PAPERSCRAPER_WEB_PASSWORD:-}
     # The tower has 8 GB and Phil-text needs them: if a search with Chrome goes beyond this,
     # only this container falls, not the rest of the machine.
     mem_limit: 2g

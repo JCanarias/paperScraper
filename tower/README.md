@@ -3,7 +3,7 @@
 Dos contenedores (`docker-compose.yml`, en la raíz del proyecto):
 
 - **`paperscraper_web`**: el menú de `main.py`, el mismo de siempre, en una terminal web
-  (`https://papers.philtext.org`). ttyd la muestra en el navegador y solo escucha en la torre (`localhost:7681`).
+  (`https://papers.philtext.org`), con usuario y contraseña. ttyd la muestra en el navegador y solo escucha en la torre (`localhost:7681`).
   tmux guarda la sesión: si cierras la pestaña o se corta la conexión, la búsqueda sigue, y al volver
   la encuentras donde estaba.
 - **`paperscraper_daily`**: la revisión diaria a las 6:00 de los autores marcados en
@@ -37,43 +37,49 @@ scp .env jorge@100.71.69.117:~/paperScraper/
 scp -r data library jorge@100.71.69.117:~/paperScraper/
 ```
 
-En la torre, en `.env`: `CALIBRE_URL=http://localhost:8080`. Comprueba también que `telegram_bot/.env`
-tiene `TELEGRAM_BOT_TOKEN` y `TELEGRAM_ALLOWED_USER_IDS`: la revisión diaria avisa con ese bot.
+En la torre, en `.env`:
+
+```
+CALIBRE_URL=http://localhost:8080
+PAPERSCRAPER_WEB_USER=jorge
+PAPERSCRAPER_WEB_PASSWORD=<una contraseña larga>
+```
+
+El navegador pide ese usuario y contraseña al abrir la terminal, como el servidor de Calibre. Sin ellos,
+la terminal web no arranca. Es la única puerta al menú desde internet: usa una contraseña larga y que no uses en otro sitio.
+
+Comprueba también que `telegram_bot/.env` tiene `TELEGRAM_BOT_TOKEN` y `TELEGRAM_ALLOWED_USER_IDS`:
+la revisión diaria avisa con ese bot.
 
 ### 2. Los contenedores
 
 ```bash
-chmod +x update.sh
 ./update.sh
 ```
 
-Pruébalo en el navegador de la torre: `http://localhost:7681`.
+Pruébalo en el navegador de la torre: `http://localhost:7681` (pide el usuario y la contraseña).
 
-### 3. Cloudflare Access (ANTES de publicar la dirección)
+### 3. La dirección
 
-En https://one.dash.cloudflare.com → **Access → Applications → Add an application → Self-hosted**:
-
-- Application domain: `papers.philtext.org`
-- Policy: **Allow**, regla **Emails** = tu correo.
-- Login method: **One-time PIN** (te llega un código por correo).
-
-### 4. La dirección
-
-En `/etc/cloudflared/config.yml`, añade esto en `ingress:` **antes** de la última regla (`- service: http_status:404`):
+El túnel se gestiona en la torre. En `/etc/cloudflared/config.yml`, añade esto en `ingress:`
+**antes** de la última regla (`- service: http_status:404`):
 
 ```yaml
   - hostname: papers.philtext.org
     service: http://localhost:7681
 ```
 
-Y luego (el nombre del túnel es el de `tunnel:` en ese mismo archivo):
+Y luego, sin sudo (hace falta el `cert.pem` de `~/.cloudflared/`; el nombre del túnel es el de `tunnel:`):
 
 ```bash
 cloudflared tunnel route dns <nombre-del-túnel> papers.philtext.org
 sudo systemctl restart cloudflared
 ```
 
-Abre `https://papers.philtext.org`: primero debe pedirte el correo. Si entra directo, Access no está bien puesto.
+Si `route dns` no encuentra el certificado, crea el registro a mano en el DNS de `philtext.org`:
+CNAME `papers` → `<id-del-túnel>.cfargotunnel.com`, con proxy (nube naranja).
+
+Abre `https://papers.philtext.org`: tiene que pedir usuario y contraseña antes de enseñar nada.
 
 ## Uso de la terminal web
 
