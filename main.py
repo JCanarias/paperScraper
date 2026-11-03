@@ -413,10 +413,15 @@ def keep_earlier_wanted(papers: list[Paper], folder: Path) -> None:
     papers_file = folder / "papers.json"
     if not papers_file.exists():
         return
-    wanted = {work_key(paper) for paper in load_papers(papers_file) if paper.wanted}
+    earlier = load_papers(papers_file)
+    wanted = {work_key(paper) for paper in earlier if paper.wanted}
+    # The ones sent to Calibre (and deleted here) must not be downloaded again.
+    sent = {work_key(paper) for paper in earlier if paper.sent_to_calibre}
     for paper in papers:
         if work_key(paper) in wanted:
             paper.wanted = True
+        if work_key(paper) in sent:
+            paper.sent_to_calibre = paper.in_calibre = True
 
 
 def work_key(paper: Paper) -> str:
@@ -430,7 +435,7 @@ def after_download(papers: list[Paper], folder: Path) -> None:
         if new:
             print(f"\nSubiendo a Calibre {len(new)} archivos nuevos...")
             upload_files(new, folder)
-    missing = sum(not is_downloaded(paper, folder) for paper in papers)
+    missing = sum(not is_downloaded(paper, folder) and not paper.in_calibre for paper in papers)
     if missing:
         print(f"{missing} obras quedan pendientes: se reintentarán con \"Reintentar las obras pendientes\","
               " y las que solo se pueden bajar desde el navegador, con \"Descargar a mano las pendientes\".")
@@ -467,14 +472,51 @@ def download_pending_by_hand() -> None:
         update_papers(papers_file, papers)
 
 
+def send_to_calibre(paper: Paper, folder: Path) -> str:
+    """Upload the work's file; once Calibre confirms it has it, delete the local copy.
+
+    Return "uploaded" (and deleted), "kept" (uploaded, but Calibre doesn't show the file, so it stays here)
+    or "duplicate" (Calibre has a book with that title and didn't take it; the file stays here).
+    """
+    file_path = downloaded_file(paper, folder)
+    book_id = calibre.upload(file_path, paper)
+    if book_id is None:
+        return "duplicate"
+    if not calibre.book_has_format(book_id, file_path.suffix):
+        return "kept"
+    remove_local_copy(paper, file_path)
+    return "uploaded"
+
+
+def remove_local_copy(paper: Paper, file_path: Path) -> None:
+    file_path.unlink()
+    paper.sent_to_calibre = paper.in_calibre = True
+    paper.downloaded = False
+
+
+def remove_files_in_calibre(papers: list[Paper], folder: Path) -> int:
+    """Delete the files of the works Calibre already has (same DOI, ISBN... and a file of that format)."""
+    removed = 0
+    for paper in papers:
+        file_path = downloaded_file(paper, folder)
+        if file_path and paper.in_calibre and calibre.has_copy(paper, file_path.suffix):
+            remove_local_copy(paper, file_path)
+            removed += 1
+    return removed
+
+
 def upload_files(papers: list[Paper], folder: Path) -> None:
     uploaded = 0
     for paper in papers:
         print(f"  Subiendo {paper.title[:MAX_TITLE_LENGTH_SHOWN]}...", end=" ", flush=True)
         try:
-            if calibre.upload(downloaded_file(paper, folder), paper):
+            result = send_to_calibre(paper, folder)
+            if result == "uploaded":
                 uploaded += 1
                 print("✓")
+            elif result == "kept":
+                uploaded += 1
+                print("✓ (Calibre no muestra el archivo; se queda también aquí)")
             else:
                 print("ya estaba")
         except requests.HTTPError as error:
@@ -591,11 +633,16 @@ def upload_downloaded() -> None:
         folder = papers_file.parent
         papers = load_papers(papers_file)
         calibre.mark_papers(papers)
+        # The files sent before (when they weren't deleted after uploading) go now.
+        removed = remove_files_in_calibre(papers, folder)
+        if removed:
+            print(f"\n{folder}: borrados {removed} archivos que ya están en Calibre")
         new = [paper for paper in papers if not paper.in_calibre and is_downloaded(paper, folder)]
         if new:
             anything_new = True
             print(f"\n{folder}: {len(new)} archivos que no están en Calibre")
             upload_files(new, folder)
+        if removed or new:
             update_papers(papers_file, papers)
     if not anything_new:
         print("✓ Todo lo descargado ya está en Calibre.")

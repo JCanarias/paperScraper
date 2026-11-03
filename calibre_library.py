@@ -40,8 +40,9 @@ class CalibreLibrary:
         self.session = requests.Session()
         self.session.auth = self._choose_auth(username, password)
         self.library_id = library_id or self._get("/ajax/library-info")["default_library"]
-        # Identifiers ("doi:10.1038/...") and "title words|author surname" of every book in the library.
-        self.identifiers: set[str] = set()
+        # Identifiers ("doi:10.1038/...") of every book in the library, with the formats of its files
+        # ("pdf", "epub"), and "title words|author surname" of every book.
+        self.identifiers: dict[str, set[str]] = {}
         self.titles: set[str] = set()
         # The books added in this run: the only ones whose details we may change.
         self.added_ids: set[int] = set()
@@ -76,13 +77,13 @@ class CalibreLibrary:
             books = self._get(f"/ajax/books/{self.library_id}", {"ids": ids})
             for book in books.values():
                 if book:
-                    self._add_to_index(book["title"], book["authors"], book["identifiers"])
+                    self._add_to_index(book["title"], book["authors"], book["identifiers"], book.get("formats", []))
         return len(book_ids)
 
     def mark_papers(self, papers: list[Paper]) -> int:
         """Set `in_calibre` on the works the library already has; return how many."""
         for paper in papers:
-            paper.in_calibre = self.contains(paper)
+            paper.in_calibre = paper.sent_to_calibre or self.contains(paper)
         return sum(paper.in_calibre for paper in papers)
 
     def contains(self, paper: Paper) -> bool:
@@ -90,18 +91,32 @@ class CalibreLibrary:
             return True
         return any(key in self.titles for key in title_keys(paper.title, paper.authors))
 
-    def upload(self, file_path: Path, paper: Paper) -> bool:
-        """Add the file to the library; return False when Calibre says it is already there."""
+    def has_copy(self, paper: Paper, extension: str) -> bool:
+        """Whether a book of the library has the same identifier (DOI, ISBN...) and a file of this format.
+
+        Only identifiers count: the same title and author can be two works ("Presentación" of two issues).
+        """
+        extension = extension.lower().lstrip(".")
+        return any(extension in self.identifiers.get(key, ())
+                   for key in identifier_keys(paper.all_identifiers()))
+
+    def book_has_format(self, book_id: int, extension: str) -> bool:
+        """Ask Calibre whether this book has a file of this format."""
+        book = self._get(f"/ajax/book/{book_id}/{self.library_id}")
+        return extension.lower().lstrip(".") in {fmt.lower() for fmt in book.get("formats") or []}
+
+    def upload(self, file_path: Path, paper: Paper) -> int | None:
+        """Add the file to the library; return its book id, or None when Calibre says it is already there."""
         result = self.add_file(file_path)
         if result.get("duplicates"):
-            return False
+            return None
 
         # Calibre reads most details from the file, but not the series, and it moves the date
         # to the day before in some time zones, so we set them again.
         self._set_fields(result["book_id"], book_fields(paper))
-        self._add_to_index(paper.title, paper.authors, paper.all_identifiers())
+        self._add_to_index(paper.title, paper.authors, paper.all_identifiers(), [file_path.suffix])
         paper.in_calibre = True
-        return True
+        return result["book_id"]
 
     def add_file(self, file_path: Path, allow_duplicates: bool = False) -> dict:
         """Add a book file with the details Calibre reads from it, plus our tag.
@@ -121,7 +136,7 @@ class CalibreLibrary:
             self.added_ids.add(result["book_id"])
             # Only our tag: the ones that come inside the files are usually noise.
             self._set_fields(result["book_id"], {"tags": [self.tag]})
-            self._add_to_index(result.get("title", ""), result.get("authors", []), {})
+            self._add_to_index(result.get("title", ""), result.get("authors", []), {}, [file_path.suffix])
         return result
 
     def _set_fields(self, book_id: int, changes: dict) -> None:
@@ -153,8 +168,10 @@ class CalibreLibrary:
         fixed = [known.setdefault(item.lower(), item) for item in values]
         return fixed if isinstance(value, list) else fixed[0]
 
-    def _add_to_index(self, title: str, authors: list[str], identifiers: dict[str, str]) -> None:
-        self.identifiers.update(identifier_keys(identifiers))
+    def _add_to_index(self, title: str, authors: list[str], identifiers: dict[str, str],
+                      formats: list[str]) -> None:
+        for key in identifier_keys(identifiers):
+            self.identifiers.setdefault(key, set()).update(fmt.lower().lstrip(".") for fmt in formats)
         self.titles.update(title_keys(title, authors))
 
     def _get(self, path: str, params: dict | None = None) -> dict:

@@ -114,6 +114,7 @@ def combine(best: Paper, other: Paper) -> None:
         best.authors = other.authors
     best.wanted = best.wanted or other.wanted
     best.in_calibre = best.in_calibre or other.in_calibre
+    best.sent_to_calibre = best.sent_to_calibre or other.sent_to_calibre
 
 
 def shared_surname(authors: list[str], other_authors: list[str]) -> bool:

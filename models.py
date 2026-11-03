@@ -34,6 +34,9 @@ class Paper:
     wanted: bool = False
     # Already in the user's Calibre library (checked at every search).
     in_calibre: bool = False
+    # Its file was sent to Calibre and Calibre confirmed it has it, so the local copy was deleted.
+    # It stays "in Calibre" even if Calibre's record changes later, so it is never downloaded again.
+    sent_to_calibre: bool = False
 
     def all_identifiers(self) -> dict[str, str]:
         """DOI, ISBN and the other ids of the work, with the lowercase scheme names Calibre uses."""

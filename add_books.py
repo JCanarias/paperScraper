@@ -5,6 +5,7 @@
 Folders are read with their subfolders. Calibre takes the title, authors and the rest from the file;
 every book also gets the tag CALIBRE_TAG ("paperScraper" by default). The books Calibre already has
 (same title, ignoring capitals; Calibre does not look at the authors) are skipped unless --duplicates is given.
+The files inside library/ are deleted once Calibre confirms it has them; the ones elsewhere are kept.
 """
 import argparse
 import os
@@ -16,6 +17,7 @@ import requests
 import config  # noqa: F401  (reads .env)
 from calibre_library import CalibreLibrary
 
+LIBRARY_FOLDER = Path(__file__).parent / "library"
 BOOK_EXTENSIONS = {".epub", ".pdf", ".mobi", ".azw", ".azw3", ".djvu", ".fb2", ".docx", ".odt", ".rtf", ".txt",
                    ".cbz", ".cbr", ".lit", ".pdb"}
 
@@ -34,7 +36,7 @@ def find_books(paths: list[Path]) -> list[Path]:
 
 
 def add_books(calibre: CalibreLibrary, books: list[Path], allow_duplicates: bool) -> None:
-    added = repeated = failed = 0
+    added = repeated = failed = removed = 0
     for book in books:
         print(f"  {book.name}...", end=" ", flush=True)
         try:
@@ -56,7 +58,26 @@ def add_books(calibre: CalibreLibrary, books: list[Path], allow_duplicates: bool
         else:
             print(f"✓ {result.get('title', '')} — {' & '.join(result.get('authors', []))}")
             added += 1
+            if remove_from_library(calibre, book, result["book_id"]):
+                removed += 1
     print(f"\n✓ Añadidos: {added}   Ya estaban: {repeated}   Errores: {failed}   (tag: {calibre.tag})")
+    if removed:
+        print(f"  Borrados de library/: {removed}")
+
+
+def remove_from_library(calibre: CalibreLibrary, book: Path, book_id: int) -> bool:
+    """Delete the file if it is inside library/ and Calibre confirms it has it."""
+    if not book.resolve().is_relative_to(LIBRARY_FOLDER.resolve()):
+        return False
+    try:
+        if not calibre.book_has_format(book_id, book.suffix):
+            print("    (Calibre no muestra el archivo; se queda en library/)")
+            return False
+    except Exception as error:
+        print(f"    (no se ha podido comprobar en Calibre; se queda en library/: {error})")
+        return False
+    book.unlink()
+    return True
 
 
 def main() -> None:

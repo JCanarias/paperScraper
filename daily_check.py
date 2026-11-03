@@ -14,7 +14,7 @@ import traceback
 from pathlib import Path
 
 import main
-from downloader import downloaded_file, is_downloaded, tag_repeated_filenames
+from downloader import is_downloaded, tag_repeated_filenames
 from duplicates import merge_duplicates, same_work
 from models import Paper
 from run_lock import take_daily_lock
@@ -43,6 +43,9 @@ def check_author(source: OpenAlexSource, papers_file: Path) -> None:
     new = add_new_works(papers, found)
     if main.calibre:
         main.calibre.mark_papers(papers)
+        removed = main.remove_files_in_calibre(papers, folder)
+        if removed:
+            print(f"Borrados {removed} archivos que ya están en Calibre")
     # As in a search by author: everything new that isn't in Calibre is downloaded.
     for paper in new:
         paper.wanted = not paper.in_calibre
@@ -86,14 +89,18 @@ def add_new_works(papers: list[Paper], found: list[Paper]) -> list[Paper]:
     return new
 
 
+CALIBRE_STATES = {
+    "uploaded": "Subida a Calibre (y borrada de la carpeta).",
+    "kept": "Subida a Calibre, pero Calibre no muestra el archivo; se queda también en la carpeta.",
+    "duplicate": "Calibre ya tenía una obra con ese título; no se ha subido y está en la carpeta.",
+}
+
+
 def on_download(paper: Paper, folder: Path) -> None:
     """Every downloaded work goes to Calibre, and the user gets a message."""
     if main.calibre:
         try:
-            if main.calibre.upload(downloaded_file(paper, folder), paper):
-                calibre_state = "Subida a Calibre."
-            else:
-                calibre_state = "Calibre ya tenía una obra con ese título; no se ha subido."
+            calibre_state = CALIBRE_STATES[main.send_to_calibre(paper, folder)]
         except Exception as error:
             calibre_state = f"No se ha podido subir a Calibre: {error}"
     else:
