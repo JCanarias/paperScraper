@@ -10,8 +10,15 @@ RUN apt-get update \
  && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
     > /etc/apt/sources.list.d/google-chrome.list \
  && apt-get update \
- && apt-get install -y --no-install-recommends google-chrome-stable xvfb ttyd tmux tzdata \
+ && apt-get install -y --no-install-recommends google-chrome-stable xvfb tmux tzdata \
  && rm -rf /var/lib/apt/lists/*
+
+# Debian bookworm has no ttyd package; its project publishes a static binary.
+ARG TTYD_VERSION=1.7.7
+RUN curl -fsSL -o /usr/local/bin/ttyd \
+      "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.x86_64" \
+ && chmod +x /usr/local/bin/ttyd \
+ && ttyd --version
 
 # The same user id as the tower's user, so the files written in library/ and data/ are theirs.
 ARG UID=1000
