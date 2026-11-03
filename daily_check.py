@@ -6,8 +6,8 @@ For each of them, as a new search by author would do, but without asking anythin
 2. looks again for a file of every chosen work still without one (local catalogues and PDF finders);
 3. sends every new file to Calibre and a Telegram message for each one.
 
-The tower runs it every day at 6:00 (tower/paperscraper-daily.timer). By hand:
-    .venv/bin/python daily_check.py
+The tower runs it every day at 6:00 (the "daily" container, tower/scheduler.py). By hand:
+    docker compose exec daily python daily_check.py
 """
 import sys
 import traceback

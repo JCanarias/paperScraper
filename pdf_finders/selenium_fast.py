@@ -1,4 +1,5 @@
 """Sci-hub finder rápido - click manual en CAPTCHA, optimizado para velocidad"""
+import os
 import time
 import html as html_lib
 from urllib.parse import quote, urldefrag, urljoin
@@ -55,6 +56,9 @@ class SeleniumSciHubFinder(DoiPdfFinder):
             opts.add_argument("--disable-blink-features=AutomationControlled")
             opts.add_argument("--disable-extensions")
             opts.add_argument("--disable-plugins")
+            # Inside a container (docker-compose.prod.yml) Chrome can't use its own sandbox.
+            if os.environ.get("CHROME_IN_CONTAINER"):
+                opts.add_argument("--no-sandbox")
             self.driver = webdriver.Chrome(options=opts)
         except:
             self.driver = webdriver.Firefox()

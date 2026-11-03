@@ -13,4 +13,4 @@ fi
 
 exec ttyd --port "$PORT" --interface lo --check-origin "${WRITABLE[@]}" \
     -t titleFixed=paperScraper -t fontSize=15 \
-    tmux -u -f "$HERE/tmux.conf" new-session -A -s paperscraper "$HERE/menu.sh"
+    tmux -u -f "$HERE/tmux.conf" new-session -A -s paperscraper "bash $HERE/menu.sh"

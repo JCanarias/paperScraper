@@ -1,0 +1,48 @@
+# docker-compose.yml — paperScraper on the tower
+# Usage: ./update.sh   (or: docker compose up -d --build)
+#
+# web:   main.py's menu as a terminal in the browser, on localhost:7681 (cloudflared + Access bring it out).
+# daily: the daily check of the followed authors at 6:00 (Madrid), or on start if today's was missed.
+#
+# Both use the tower's network (network_mode: host), so Calibre's server is at localhost:8080, as for
+# the rest of the tower. library/ and data/ stay outside the containers; set PAPERSCRAPER_LIBRARY and
+# PAPERSCRAPER_DATA in .env to keep them somewhere else (/mnt/hdd/paperscraper/...).
+
+x-paperscraper: &paperscraper
+  build:
+    context: .
+  image: paperscraper
+  init: true
+  network_mode: host
+  # Chrome needs more shared memory than Docker's default 64 MB.
+  shm_size: 1gb
+  # The invisible screen started by tower/entrypoint.sh; also for `docker compose exec`.
+  environment:
+    DISPLAY: ":99"
+  volumes:
+    - .:/app
+    - ${PAPERSCRAPER_LIBRARY:-./library}:/app/library
+    - ${PAPERSCRAPER_DATA:-./data}:/app/data
+  restart: unless-stopped
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  web:
+    <<: *paperscraper
+    container_name: paperscraper_web
+    command: ["bash", "/app/tower/start.sh"]
+    # The tower has 8 GB and Phil-text needs them: if a search with Chrome goes beyond this,
+    # only this container falls, not the rest of the machine.
+    mem_limit: 2g
+    memswap_limit: 2g
+
+  daily:
+    <<: *paperscraper
+    container_name: paperscraper_daily
+    command: ["python", "/app/tower/scheduler.py"]
+    mem_limit: 2g
+    memswap_limit: 2g

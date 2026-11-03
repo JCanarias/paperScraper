@@ -1,15 +1,27 @@
 # paperScraper en la torre: terminal web y revisión diaria
 
-El menú de `main.py`, el mismo de siempre, en una terminal web que corre en la torre.
-Se usa desde cualquier sitio en `https://papers.philtext.org`.
+Dos contenedores (`docker-compose.yml`, en la raíz del proyecto):
 
-- **ttyd** muestra la terminal en el navegador. Solo escucha en la propia torre (`localhost:7681`).
-- **tmux** guarda la sesión: si cierras la pestaña o se corta la conexión, la búsqueda sigue,
-  y al volver la encuentras donde estaba.
-- **cloudflared** la saca a internet, como `calibre.philtext.org`.
-- **Cloudflare Access** pide tu correo antes de dejar pasar. Sin él, cualquiera tendría una terminal en la torre.
+- **`paperscraper_web`**: el menú de `main.py`, el mismo de siempre, en una terminal web
+  (`https://papers.philtext.org`). ttyd la muestra en el navegador y solo escucha en la torre (`localhost:7681`).
+  tmux guarda la sesión: si cierras la pestaña o se corta la conexión, la búsqueda sigue, y al volver
+  la encuentras donde estaba.
+- **`paperscraper_daily`**: la revisión diaria a las 6:00 de los autores marcados en
+  "Autores que seguir". Si la torre estaba apagada a esa hora, la hace al arrancar.
 
-## Puesta en marcha (en la torre)
+Los dos usan la red de la torre, así que Calibre está en `localhost:8080`. Chrome (Sci-Hub) se abre dentro de
+cada contenedor, en una pantalla invisible (Xvfb). Cada contenedor puede usar 2 GB de memoria como mucho:
+la torre tiene 8 GB y Phil-text los necesita.
+
+`library/` y `data/` (los catálogos) quedan fuera de los contenedores, en la carpeta del proyecto.
+Para tenerlos en el disco grande, pon en `.env`:
+
+```
+PAPERSCRAPER_LIBRARY=/mnt/hdd/paperscraper/library
+PAPERSCRAPER_DATA=/mnt/hdd/paperscraper/data
+```
+
+## Puesta en marcha
 
 ### 1. El proyecto
 
@@ -25,19 +37,17 @@ scp .env jorge@100.71.69.117:~/paperScraper/
 scp -r data library jorge@100.71.69.117:~/paperScraper/
 ```
 
-En la torre, cambia en `.env` la dirección de Calibre por la local: `CALIBRE_URL=http://localhost:8080`.
+En la torre, en `.env`: `CALIBRE_URL=http://localhost:8080`. Comprueba también que `telegram_bot/.env`
+tiene `TELEGRAM_BOT_TOKEN` y `TELEGRAM_ALLOWED_USER_IDS`: la revisión diaria avisa con ese bot.
 
-### 2. El servicio
+### 2. Los contenedores
 
 ```bash
-bash tower/install.sh
+chmod +x update.sh
+./update.sh
 ```
 
-Instala ttyd, tmux, el entorno de Python y el servicio `paperscraper-web`. Pruébalo en el navegador
-de la torre: `http://localhost:7681`.
-
-Sci-Hub necesita Chrome. Si no está: descarga el `.deb` de google.com/chrome e instálalo con
-`sudo apt install ./google-chrome-stable_current_amd64.deb`.
+Pruébalo en el navegador de la torre: `http://localhost:7681`.
 
 ### 3. Cloudflare Access (ANTES de publicar la dirección)
 
@@ -65,45 +75,39 @@ sudo systemctl restart cloudflared
 
 Abre `https://papers.philtext.org`: primero debe pedirte el correo. Si entra directo, Access no está bien puesto.
 
-## Uso
+## Uso de la terminal web
 
 - Es la terminal de siempre: flechas y Enter; en las listas de casillas, espacio para marcar.
 - En el móvil, sin flechas: `j` y `k` para bajar y subir.
 - Ctrl+C interrumpe, como siempre. Al terminar cada opción, Enter vuelve al menú.
 - Rueda del ratón para ver lo de antes; para copiar texto, selecciona con Shift pulsado.
-- "Descargar a mano las pendientes" abre el navegador **de la torre**, no el tuyo; en remoto no sirve.
-- Chrome (Sci-Hub) se abre en la pantalla de la torre.
+- "Descargar a mano las pendientes" no sirve aquí: abriría un navegador dentro del contenedor.
 
-## Revisión diaria (6:00)
+## Revisión diaria
 
-Cada día a las 6:00 (hora de la torre), `daily_check.py` revisa los autores marcados en
-el menú → **"Autores que seguir (revisión diaria)"**. De cada uno:
+Para cada autor seguido:
 
 1. busca obras nuevas (OpenAlex y las demás bibliotecas) y marca para descargar las que no están en Calibre;
 2. busca otra vez archivo para las obras elegidas que aún no lo tienen (también obras viejas);
 3. sube a Calibre cada obra que descarga y te manda un mensaje por Telegram por cada una.
 
-Usa el bot de `telegram_bot/.env`: su token, y manda los mensajes a los usuarios de `TELEGRAM_ALLOWED_USER_IDS`.
-Si la torre estaba apagada a las 6:00, la revisión se hace al encenderla.
-
 En las listas buscadas antes de esto solo está guardado el perfil principal de OpenAlex. Si un autor
 tenía varios perfiles ("L. Flamarique-Zaratiegui"...), búscalo otra vez por autor y elígelos todos: la marca de
 seguirlo se conserva.
-
-```bash
-sudo systemctl start paperscraper-daily      # hacerla ahora
-journalctl -u paperscraper-daily -e           # qué hizo la última vez
-systemctl list-timers paperscraper-daily.timer   # cuándo toca la próxima
-```
 
 Mientras corre, el menú avisa al arrancar de que la revisión está en marcha.
 
 ## Mantenimiento
 
 ```bash
-sudo systemctl restart paperscraper-web   # reinicia la web; la sesión de tmux sigue
-tmux kill-session -t paperscraper         # cierra la sesión (para lo que esté corriendo)
-journalctl -u paperscraper-web -f         # registros
+./update.sh                                         # git pull, reconstruir y reiniciar
+docker compose exec daily python daily_check.py     # hacer la revisión ahora
+docker logs -f paperscraper_daily                   # qué hace (o hizo) la revisión
+docker logs -f paperscraper_web
+docker compose restart web                          # reinicia la terminal (cierra la sesión)
 ```
 
-Después de un `git pull` con cambios en `main.py`, basta con volver al menú: cada opción arranca `main.py` de nuevo.
+`./update.sh` no reinicia nada mientras la revisión diaria está en marcha (con `--force`, sí).
+Reiniciar `web` cierra la sesión de la terminal y lo que esté corriendo en ella.
+Los cambios de código solo necesitan volver al menú (cada opción arranca `main.py` de nuevo);
+los de `requirements.txt` o `Dockerfile`, `./update.sh`.
