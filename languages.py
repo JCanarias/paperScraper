@@ -3,8 +3,12 @@
 Each source writes the language its own way ("es", "spa", "Spanish", "español"...), so they are turned
 into the two-letter codes OpenAlex and Calibre use. The choice is kept in library/settings.json, which
 the menu, the web terminal and the daily check share. With no language chosen, every one is allowed.
+
+A search by author can choose its own languages; they are kept in the author's papers.json
+("language_choice") and used for that author instead of the general ones (see `using_languages`).
 """
 import json
+from contextlib import contextmanager
 from pathlib import Path
 
 from models import Paper
@@ -54,13 +58,39 @@ def save_settings(settings: dict) -> None:
     SETTINGS_FILE.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+# The languages of the author being searched or checked, while `using_languages` is active.
+_current_choice: dict | None = None
+
+
+@contextmanager
+def using_languages(choice: dict | None):
+    """Use `choice` ({"languages": [...], "unknown_language": bool}) instead of the general languages.
+
+    With None, the general ones (menu "Idiomas") are used.
+    """
+    global _current_choice
+    previous = _current_choice
+    _current_choice = choice
+    try:
+        yield
+    finally:
+        _current_choice = previous
+
+
+def current_choice() -> dict:
+    """The languages in use now: the author's, or the general ones."""
+    choice = _current_choice if _current_choice is not None else load_settings()
+    return {"languages": sorted(choice.get("languages") or []),
+            "unknown_language": choice.get("unknown_language", True)}
+
+
 def chosen_languages() -> set[str]:
     """The chosen languages; empty means all of them."""
-    return set(load_settings().get("languages") or [])
+    return set(current_choice()["languages"])
 
 
 def unknown_language_allowed() -> bool:
-    return load_settings().get("unknown_language", True)
+    return current_choice()["unknown_language"]
 
 
 def language_allowed(code: str | None) -> bool:

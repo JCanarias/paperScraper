@@ -7,8 +7,12 @@ from models import Author, Paper
 PAPERS_FILENAME = "papers.json"
 
 
-def save_papers(author: Author, papers: list[Paper], folder: Path, profiles: list[Author] | None = None) -> Path:
-    """Save an author's list. `profiles` are all the OpenAlex profiles chosen for that person."""
+def save_papers(author: Author, papers: list[Paper], folder: Path, profiles: list[Author] | None = None,
+                language_choice: dict | None = None) -> Path:
+    """Save an author's list. `profiles` are all the OpenAlex profiles chosen for that person.
+
+    `language_choice` are the languages chosen for this author (without it, the earlier ones are kept).
+    """
     folder.mkdir(parents=True, exist_ok=True)
     file_path = folder / PAPERS_FILENAME
     earlier = load_content(file_path) if file_path.exists() else {}
@@ -20,6 +24,10 @@ def save_papers(author: Author, papers: list[Paper], folder: Path, profiles: lis
         "follow": earlier.get("follow", False),
         "papers": [asdict(paper) for paper in papers],
     }
+    # The daily check of this author uses the same languages.
+    language_choice = language_choice or earlier.get("language_choice")
+    if language_choice:
+        content["language_choice"] = language_choice
 
     file_path.write_text(json.dumps(content, indent=2, ensure_ascii=False), encoding="utf-8")
     return file_path

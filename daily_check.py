@@ -16,7 +16,7 @@ from pathlib import Path
 import main
 from downloader import is_downloaded, tag_repeated_filenames
 from duplicates import merge_duplicates, same_work
-from languages import keep_chosen_languages, paper_language_allowed
+from languages import keep_chosen_languages, languages_label, paper_language_allowed, using_languages
 from models import Paper
 from run_lock import take_daily_lock
 from sources.openalex import OpenAlexSource
@@ -34,7 +34,14 @@ def check_author(source: OpenAlexSource, papers_file: Path) -> None:
     content = load_content(papers_file)
     papers = load_papers(papers_file)
     print(f"\n{'=' * 60}\n{folder.name}\n{'=' * 60}")
+    # The languages chosen when this author was searched (or the general ones).
+    with using_languages(content.get("language_choice")):
+        print(f"Idiomas: {languages_label()}")
+        check_author_works(source, papers_file, content, papers)
 
+
+def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict, papers: list[Paper]) -> None:
+    folder = papers_file.parent
     try:
         found = keep_chosen_languages(merge_duplicates(main.find_author_works(source, author_profiles(content))))
     except Exception as error:
