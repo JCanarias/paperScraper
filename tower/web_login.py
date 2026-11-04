@@ -12,12 +12,14 @@ import asyncio
 import hashlib
 import hmac
 import html
+import logging
 import os
 import sys
 import time
 
 from aiohttp import ClientSession, UnixConnector, WSMsgType, web
 
+log = logging.getLogger("web_login")
 COOKIE_NAME = "paperscraper_session"
 SESSION_SECONDS = 30 * 24 * 3600
 # Each wrong password waits this long, and only one login is checked at a time: guessing is slow.
@@ -80,21 +82,31 @@ class Door:
     # --- pages ---
 
     async def login_page(self, request: web.Request, error: str = "") -> web.Response:
+        if not error and self.logged_in(request):
+            raise web.HTTPFound("/")
         error_html = f'<p class="error">{html.escape(error)}</p>' if error else ""
         return web.Response(text=LOGIN_PAGE.format(error=error_html), content_type="text/html",
                             headers={"Cache-Control": "no-store"})
 
     async def login(self, request: web.Request) -> web.Response:
         form = await request.post()
+        # Phone keyboards often capitalise the user or add a space after it.
+        typed_user = str(form.get("user", "")).strip().lower()
         async with self.login_lock:
-            right_user = hmac.compare_digest(str(form.get("user", "")).encode(), self.user.encode())
+            right_user = hmac.compare_digest(typed_user.encode(), self.user.strip().lower().encode())
             right_password = hmac.compare_digest(str(form.get("password", "")).encode(), self.password.encode())
             if not (right_user and right_password):
+                log.warning("Inicio de sesión fallido desde %s: %s", client_address(request),
+                            "contraseña incorrecta" if right_user else "usuario incorrecto")
                 await asyncio.sleep(FAILED_LOGIN_DELAY_SECONDS)
                 return await self.login_page(request, "Usuario o contraseña incorrectos.")
+        secure = not is_local(request)
+        log.info("Sesión iniciada desde %s (host %s, cookie %s)", client_address(request), request.host,
+                 "segura" if secure else "no segura")
         response = web.HTTPFound("/")
         response.set_cookie(COOKIE_NAME, self.new_cookie(), max_age=SESSION_SECONDS, httponly=True,
-                            samesite="Lax", secure=not is_local(request), path="/")
+                            samesite="Lax", secure=secure, path="/")
+        response.headers["Cache-Control"] = "no-store"
         raise response
 
     async def logout(self, request: web.Request) -> web.Response:
@@ -106,6 +118,8 @@ class Door:
 
     async def forward(self, request: web.Request) -> web.StreamResponse:
         if not self.logged_in(request):
+            log.info("%s %s sin sesión (%s)", request.method, request.path,
+                     "cookie no válida o caducada" if COOKIE_NAME in request.cookies else "sin cookie")
             if request.headers.get("Upgrade", "").lower() == "websocket":
                 raise web.HTTPUnauthorized()
             raise web.HTTPFound("/login")
@@ -153,11 +167,17 @@ async def pump(source, destination) -> None:
         await destination.close()
 
 
+def client_address(request: web.Request) -> str:
+    # Behind cloudflared every request comes from localhost; Cloudflare says who it really is.
+    return request.headers.get("CF-Connecting-IP") or request.remote or "?"
+
+
 def is_local(request: web.Request) -> bool:
     return request.host.split(":")[0] in ("localhost", "127.0.0.1")
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     user = os.environ.get("PAPERSCRAPER_WEB_USER", "")
     password = os.environ.get("PAPERSCRAPER_WEB_PASSWORD", "")
     if not user or not password:
