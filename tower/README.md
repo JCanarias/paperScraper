@@ -47,7 +47,7 @@ PAPERSCRAPER_WEB_PASSWORD=<una contraseña larga>
 ```
 
 La página pide ese usuario y contraseña al abrir la terminal y se acuerda 30 días (una cookie; también en el
-móvil). Para cerrar la sesión: `https://papers.philtext.org/logout`. Cambiar la contraseña cierra todas las sesiones. Sin ellos,
+móvil). Tras entrar, la dirección es `https://papers.philtext.org/s/<sesión>/`: lleva la sesión dentro (para los móviles que no guardan la cookie), así que no la compartas. Para cerrar la sesión: `https://papers.philtext.org/logout`. Cambiar la contraseña cierra todas las sesiones. Sin ellos,
 la terminal web no arranca. Es la única puerta al menú desde internet: usa una contraseña larga y que no uses en otro sitio.
 
 Comprueba también que `telegram_bot/.env` tiene `TELEGRAM_BOT_TOKEN` y `TELEGRAM_ALLOWED_USER_IDS`:
