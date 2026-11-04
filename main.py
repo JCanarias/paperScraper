@@ -33,6 +33,7 @@ from sources.openalex import OpenAlexSource
 from sources.philarchive import PhilArchiveSource
 from sources.wikisource import WikisourceSource
 from update_indexes import INDEXED_SOURCES, update_indexes
+from library_browser import browse_library
 from languages import (LANGUAGE_NAMES, chosen_languages, keep_chosen_languages, languages_label,
                        load_settings, paper_language_allowed, save_settings, unknown_language_allowed)
 from run_lock import daily_check_running
@@ -802,6 +803,7 @@ def main() -> None:
             questionary.Choice("Reintentar las obras pendientes", value="retry"),
             questionary.Choice("Descargar a mano las pendientes (en el navegador)", value="by_hand"),
             questionary.Choice("Subir a Calibre lo ya descargado", value="upload"),
+            questionary.Choice("Ver y borrar archivos de la biblioteca", value="browse"),
             questionary.Choice("Actualizar los catálogos locales (Dialnet, PhilArchive, DOAB)", value="indexes"),
             questionary.Choice("Poner metadatos a los archivos ya descargados", value="tag"),
             questionary.Choice("Autores que seguir (revisión diaria)", value="follow"),
@@ -821,6 +823,8 @@ def main() -> None:
         download_pending_by_hand()
     elif choice == "upload":
         upload_downloaded()
+    elif choice == "browse":
+        browse_library(LIBRARY_FOLDER)
     elif choice == "indexes":
         update_indexes(list(INDEXED_SOURCES))
     elif choice == "tag":
