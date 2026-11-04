@@ -16,6 +16,7 @@ from pathlib import Path
 import main
 from downloader import is_downloaded, tag_repeated_filenames
 from duplicates import merge_duplicates, same_work
+from languages import keep_chosen_languages, paper_language_allowed
 from models import Paper
 from run_lock import take_daily_lock
 from sources.openalex import OpenAlexSource
@@ -35,7 +36,7 @@ def check_author(source: OpenAlexSource, papers_file: Path) -> None:
     print(f"\n{'=' * 60}\n{folder.name}\n{'=' * 60}")
 
     try:
-        found = merge_duplicates(main.find_author_works(source, author_profiles(content)))
+        found = keep_chosen_languages(merge_duplicates(main.find_author_works(source, author_profiles(content))))
     except Exception as error:
         # Without the new search, the pending works of the list are still looked for.
         print(f"Aviso: no se han podido buscar obras nuevas: {error}")
@@ -52,7 +53,8 @@ def check_author(source: OpenAlexSource, papers_file: Path) -> None:
     print(f"Obras nuevas: {len(new)}")
 
     pending = [paper for paper in papers
-               if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)]
+               if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
+               and paper_language_allowed(paper)]
     print(f"Pendientes de archivo: {len(pending)}")
     try:
         if pending:

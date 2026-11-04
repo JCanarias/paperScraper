@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 
 import requests
 
+from languages import language_allowed
 from models import Paper
 from sources.base import BookSource
 from sources.names import name_words, readable_name, same_author
@@ -48,6 +49,9 @@ class WikisourceSource(BookSource):
         for language in AUTHOR_NAMESPACES:
             if len(books) >= limit:
                 break
+            # The wikis of the languages not chosen in "Idiomas" aren't asked (they are the slow part).
+            if not language_allowed(language):
+                continue
             try:
                 books.extend(self._books_by_author(language, author_name, limit - len(books)))
             except API_ERRORS:
@@ -62,6 +66,9 @@ class WikisourceSource(BookSource):
         for language in AUTHOR_NAMESPACES:
             if len(books) >= limit:
                 break
+            # The wikis of the languages not chosen in "Idiomas" aren't asked (they are the slow part).
+            if not language_allowed(language):
+                continue
             try:
                 books.extend(self._books_by_title(language, words, limit - len(books)))
             except API_ERRORS:

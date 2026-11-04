@@ -33,6 +33,8 @@ from sources.openalex import OpenAlexSource
 from sources.philarchive import PhilArchiveSource
 from sources.wikisource import WikisourceSource
 from update_indexes import INDEXED_SOURCES, update_indexes
+from languages import (LANGUAGE_NAMES, chosen_languages, keep_chosen_languages, languages_label,
+                       load_settings, paper_language_allowed, save_settings, unknown_language_allowed)
 from run_lock import daily_check_running
 from storage import find_saved_lists, load_content, load_papers, save_papers, save_search, set_follow, update_papers
 
@@ -396,9 +398,14 @@ def find_author_works(source: OpenAlexSource, profiles: list[Author]) -> list[Pa
     return papers
 
 
-def prepare_list(papers: list[Paper]) -> list[Paper]:
-    """Join the repeated works, mark the ones already in Calibre and give each one its own file name."""
+def prepare_list(papers: list[Paper], only_chosen_languages: bool = True) -> list[Paper]:
+    """Join the repeated works, mark the ones already in Calibre and give each one its own file name.
+
+    The works in languages not chosen in "Idiomas" are left out, unless `only_chosen_languages` is False.
+    """
     papers = merge_duplicates(papers)
+    if only_chosen_languages:
+        papers = keep_chosen_languages(papers)
     if calibre:
         in_calibre = calibre.mark_papers(papers)
         if in_calibre:
@@ -449,7 +456,8 @@ def download_pending_by_hand() -> None:
         if calibre:
             calibre.mark_papers(papers)
         pending = [paper for paper in papers
-                   if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)]
+                   if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
+                   and paper_language_allowed(paper)]
         if not pending:
             continue
         print(f"\n{folder}: {len(pending)} pendientes")
@@ -551,8 +559,8 @@ def search_by_bibliography(source: OpenAlexSource) -> None:
     if not papers:
         return
 
-    papers = prepare_list(papers)
-    # The bibliography is already a choice, so everything not in Calibre is downloaded.
+    # The bibliography is already a choice: every language, and everything not in Calibre is downloaded.
+    papers = prepare_list(papers, only_chosen_languages=False)
     selected_papers = [paper for paper in papers if not paper.in_calibre]
     print(f"\nSe han encontrado {len(papers)} obras; se descargan las {len(selected_papers)} que no están en Calibre.")
     download_and_save_search(f"Bibliografía: {file_path.name}", selected_papers,
@@ -602,7 +610,8 @@ def retry_pending() -> None:
         if calibre:
             calibre.mark_papers(papers)
         pending = [paper for paper in papers
-                   if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)]
+                   if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
+                   and paper_language_allowed(paper)]
         if not pending:
             continue
 
@@ -695,6 +704,33 @@ def tag_downloaded_files(source: OpenAlexSource) -> None:
     print("\n✓ Metadatos escritos.")
 
 
+def choose_languages() -> None:
+    """Choose the languages the works are searched and downloaded in."""
+    chosen = chosen_languages()
+    print(f"Ahora: {languages_label()}.")
+    answer = questionary.checkbox(
+        "Marca los idiomas en los que buscar y descargar (sin ninguno marcado: todos):",
+        choices=[
+            *(questionary.Choice(f"{name} ({code})", value=code, checked=code in chosen)
+              for code, name in LANGUAGE_NAMES.items()),
+            questionary.Separator(),
+            questionary.Choice("Obras sin idioma conocido", value="unknown",
+                               checked=bool(chosen) and unknown_language_allowed()),
+        ],
+        instruction="\n  ↑/↓ moverse · Espacio marcar · Enter confirmar",
+    ).ask()
+    # ask() returns None when the user presses Ctrl+C: nothing changes.
+    if answer is None:
+        return
+    settings = load_settings()
+    # Codes chosen before that the menu doesn't offer (edited by hand) are kept.
+    settings["languages"] = sorted({code for code in answer if code != "unknown"}
+                                   | (chosen - set(LANGUAGE_NAMES)))
+    settings["unknown_language"] = "unknown" in answer or not settings["languages"]
+    save_settings(settings)
+    print(f"✓ Idiomas: {languages_label()}.")
+
+
 def choose_followed_authors() -> None:
     """Choose the authors whose new works and files the daily check looks for."""
     lists = [(papers_file, load_content(papers_file)) for papers_file in find_saved_lists(LIBRARY_FOLDER)]
@@ -749,6 +785,7 @@ def main() -> None:
             questionary.Choice("Actualizar los catálogos locales (Dialnet, PhilArchive, DOAB)", value="indexes"),
             questionary.Choice("Poner metadatos a los archivos ya descargados", value="tag"),
             questionary.Choice("Autores que seguir (revisión diaria)", value="follow"),
+            questionary.Choice(f"Idiomas ({languages_label()})", value="languages"),
         ],
     ).ask()
 
@@ -770,6 +807,8 @@ def main() -> None:
         tag_downloaded_files(source)
     elif choice == "follow":
         choose_followed_authors()
+    elif choice == "languages":
+        choose_languages()
 
 
 if __name__ == "__main__":
