@@ -84,6 +84,10 @@ class Door:
     async def login_page(self, request: web.Request, error: str = "") -> web.Response:
         if not error and self.logged_in(request):
             raise web.HTTPFound("/")
+        if not error and request.query.get("why") == "nocookie":
+            error = ("Usuario y contraseña correctos, pero el navegador no ha guardado la sesión (cookie). "
+                     "Si lo has abierto desde Telegram u otra app, ábrelo en Chrome o Safari; si no, "
+                     "permite las cookies para esta página.")
         error_html = f'<p class="error">{html.escape(error)}</p>' if error else ""
         return web.Response(text=LOGIN_PAGE.format(error=error_html), content_type="text/html",
                             headers={"Cache-Control": "no-store"})
@@ -99,11 +103,12 @@ class Door:
                 log.warning("Inicio de sesión fallido desde %s: %s", client_address(request),
                             "contraseña incorrecta" if right_user else "usuario incorrecto")
                 await asyncio.sleep(FAILED_LOGIN_DELAY_SECONDS)
-                return await self.login_page(request, "Usuario o contraseña incorrectos.")
+                return await self.login_page(request, "Usuario o contraseña incorrectos. En el móvil, mira que el teclado "
+                                             "no haya puesto mayúscula o cambiado algún carácter de la contraseña.")
         secure = not is_local(request)
         log.info("Sesión iniciada desde %s (host %s, cookie %s)", client_address(request), request.host,
                  "segura" if secure else "no segura")
-        response = web.HTTPFound("/")
+        response = web.HTTPFound("/?from=login")
         response.set_cookie(COOKIE_NAME, self.new_cookie(), max_age=SESSION_SECONDS, httponly=True,
                             samesite="Lax", secure=secure, path="/")
         response.headers["Cache-Control"] = "no-store"
@@ -122,7 +127,13 @@ class Door:
                      "cookie no válida o caducada" if COOKIE_NAME in request.cookies else "sin cookie")
             if request.headers.get("Upgrade", "").lower() == "websocket":
                 raise web.HTTPUnauthorized()
+            if request.query.get("from") == "login":
+                log.warning("El navegador de %s no ha devuelto la cookie de la sesión", client_address(request))
+                raise web.HTTPFound("/login?why=nocookie")
             raise web.HTTPFound("/login")
+        if request.query.get("from") == "login":
+            # The cookie came back: the mark isn't needed any more (ttyd would take it for an option).
+            raise web.HTTPFound("/")
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return await self.forward_websocket(request)
         return await self.forward_http(request)
