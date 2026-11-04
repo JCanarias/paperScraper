@@ -87,7 +87,7 @@ def author_label(author: Author) -> str:
 
 def choose_authors(source: OpenAlexSource, authors: list[Author]) -> list[Author]:
     if len(authors) == 1:
-        return authors
+        return confirm_author(source, authors[0])
 
     print("\nVarios autores coinciden con ese nombre.")
     # The user can look at the works of each author as many times as needed before choosing.
@@ -115,6 +115,26 @@ def choose_authors(source: OpenAlexSource, authors: list[Author]) -> list[Author
         instruction="\n  ↑/↓ moverse · Espacio marcar · Enter confirmar",
     ).ask()
     return selected or []
+
+
+def confirm_author(source: OpenAlexSource, author: Author) -> list[Author]:
+    """The only author found, once the user confirms it is the one they meant."""
+    print(f"\nSolo un autor coincide con ese nombre:\n  {author_label(author)}")
+    while True:
+        choice = questionary.select(
+            "¿Es este autor?",
+            choices=[
+                questionary.Choice("Sí, descargar sus obras", value="yes"),
+                questionary.Choice("Ver sus obras más citadas", value="preview"),
+                questionary.Choice("No, cancelar", value="cancel"),
+            ],
+        ).ask()
+        # ask() returns None when the user presses Ctrl+C.
+        if choice is None or choice == "cancel":
+            return []
+        if choice == "yes":
+            return [author]
+        preview_author(source, author)
 
 
 def preview_author(source: OpenAlexSource, author: Author) -> None:
