@@ -22,5 +22,6 @@ echo "── Construyendo la imagen ──"
 docker compose build
 
 echo "── Arrancando ──"
-docker compose up -d --remove-orphans
+# The code is mounted, not in the image: without recreating them, the running programs keep the old code.
+docker compose up -d --remove-orphans --force-recreate
 docker compose ps
