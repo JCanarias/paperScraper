@@ -6,3 +6,4 @@ pikepdf
 truststore
 lxml
 selenium
+aiohttp

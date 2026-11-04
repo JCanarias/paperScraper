@@ -3,7 +3,8 @@
 Dos contenedores (`docker-compose.yml`, en la raíz del proyecto):
 
 - **`paperscraper_web`**: el menú de `main.py`, el mismo de siempre, en una terminal web
-  (`https://papers.philtext.org`), con usuario y contraseña. ttyd la muestra en el navegador y solo escucha en la torre (`localhost:7681`).
+  (`https://papers.philtext.org`), con usuario y contraseña. ttyd la muestra en el navegador; delante tiene
+  una página de inicio de sesión (`tower/web_login.py`), que solo escucha en la torre (`localhost:7681`).
   tmux guarda la sesión: si cierras la pestaña o se corta la conexión, la búsqueda sigue, y al volver
   la encuentras donde estaba.
 - **`paperscraper_daily`**: la revisión diaria a las 6:00 de los autores marcados en
@@ -45,7 +46,8 @@ PAPERSCRAPER_WEB_USER=jorge
 PAPERSCRAPER_WEB_PASSWORD=<una contraseña larga>
 ```
 
-El navegador pide ese usuario y contraseña al abrir la terminal, como el servidor de Calibre. Sin ellos,
+La página pide ese usuario y contraseña al abrir la terminal y se acuerda 30 días (una cookie; también en el
+móvil). Para cerrar la sesión: `https://papers.philtext.org/logout`. Cambiar la contraseña cierra todas las sesiones. Sin ellos,
 la terminal web no arranca. Es la única puerta al menú desde internet: usa una contraseña larga y que no uses en otro sitio.
 
 Comprueba también que `telegram_bot/.env` tiene `TELEGRAM_BOT_TOKEN` y `TELEGRAM_ALLOWED_USER_IDS`:
@@ -58,6 +60,7 @@ la revisión diaria avisa con ese bot.
 ```
 
 Pruébalo en el navegador de la torre: `http://localhost:7681` (pide el usuario y la contraseña).
+Tras cambiar `requirements.txt` o el `Dockerfile` hace falta `./update.sh` (reconstruye la imagen); para lo demás basta `git pull`.
 
 ### 3. La dirección
 

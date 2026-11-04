@@ -1,7 +1,8 @@
 # docker-compose.yml — paperScraper on the tower
 # Usage: ./update.sh   (or: docker compose up -d --build)
 #
-# web:   main.py's menu as a terminal in the browser, on localhost:7681 (cloudflared brings it out; it asks for a user and password).
+# web:   main.py's menu as a terminal in the browser, on localhost:7681 (cloudflared brings it out;
+#        a login page asks for the user and password, tower/web_login.py).
 # daily: the daily check of the followed authors at 6:00 (Madrid), or on start if today's was missed.
 #
 # Both use the tower's network (network_mode: host), so Calibre's server is at localhost:8080, as for
