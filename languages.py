@@ -33,6 +33,14 @@ OTHER_SPELLINGS = {
     "latín": "la", "griego": "el", "catalán": "ca", "gallego": "gl", "euskera": "eu",
 }
 
+# Sources whose language data is unreliable: their titles are checked too (paper_language_allowed).
+TITLE_CHECKED_SOURCES = ("Internet Archive",)
+# Short titles ("Manuel Kant") are often guessed wrong.
+MIN_TITLE_WORDS_TO_GUESS = 4
+MIN_GUESS_PROBABILITY = 0.95
+# The offered languages that langdetect knows (not Latin, Galician or Basque).
+GUESSABLE_LANGUAGES = {"es", "en", "de", "fr", "it", "pt", "el", "ca", "nl", "pl", "ru"}
+
 
 def language_code(language: str | None) -> str | None:
     """The two-letter code of a language as a source writes it, or None if it is unknown."""
@@ -43,7 +51,13 @@ def language_code(language: str | None) -> str | None:
     if text in OTHER_SPELLINGS:
         return OTHER_SPELLINGS[text]
     code = text.split("-")[0]
-    return code if len(code) == 2 and code.isalpha() else OTHER_SPELLINGS.get(code)
+    if len(code) == 2 and code.isalpha():
+        return code
+    # A three-letter code not in the list ("vie", "hun") is a known language, just not one offered:
+    # it must not pass as "unknown language".
+    if len(code) == 3 and code.isalpha():
+        return OTHER_SPELLINGS.get(code, code)
+    return None
 
 
 def load_settings() -> dict:
@@ -103,7 +117,36 @@ def language_allowed(code: str | None) -> bool:
 
 
 def paper_language_allowed(paper: Paper) -> bool:
-    return language_allowed(language_code(paper.language))
+    if not language_allowed(language_code(paper.language)):
+        return False
+    # Internet Archive's language is what the uploader wrote, often wrong or missing: its titles are
+    # checked too, and a title clearly in a language not chosen leaves the work out.
+    if paper.source in TITLE_CHECKED_SOURCES and chosen_languages():
+        title_language = clear_title_language(paper.title)
+        if title_language and title_language not in chosen_languages():
+            return False
+    return True
+
+
+def clear_title_language(title: str | None) -> str | None:
+    """The language of a title, only when the guess is safe (long enough title, high probability)."""
+    if not title or len(title.split()) < MIN_TITLE_WORDS_TO_GUESS:
+        return None
+    # The guesser doesn't know Latin, Galician or Basque, and takes them for other languages:
+    # with one of them chosen, a guess could leave out a good work.
+    if chosen_languages() - GUESSABLE_LANGUAGES:
+        return None
+    try:
+        from langdetect import DetectorFactory, LangDetectException, detect_langs
+    except ImportError:
+        return None
+    # Without a seed the guesser can answer differently each time.
+    DetectorFactory.seed = 0
+    try:
+        best = detect_langs(title)[0]
+    except LangDetectException:
+        return None
+    return best.lang.split("-")[0] if best.prob >= MIN_GUESS_PROBABILITY else None
 
 
 def keep_chosen_languages(papers: list[Paper]) -> list[Paper]:

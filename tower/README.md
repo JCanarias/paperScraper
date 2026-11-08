@@ -97,7 +97,9 @@ Abre `https://papers.philtext.org`: tiene que pedir usuario y contraseña antes 
 Para cada autor seguido:
 
 1. busca obras nuevas (OpenAlex y las demás bibliotecas) y marca para descargar las que no están en Calibre;
-2. busca otra vez archivo para las obras elegidas que aún no lo tienen (también obras viejas);
+2. busca otra vez archivo para las obras elegidas que aún no lo tienen (también obras viejas). Una obra que
+   sigue sin archivo espera cada vez más antes del siguiente intento (1, 2, 4, 8, 16 y como mucho 30 días),
+   salvo que aparezca un enlace nuevo para ella. "Reintentar las obras pendientes", en el menú, las prueba todas;
 3. sube a Calibre cada obra que descarga y te manda un mensaje por Telegram por cada una.
 
 En las listas buscadas antes de esto solo está guardado el perfil principal de OpenAlex. Si un autor

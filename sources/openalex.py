@@ -1,4 +1,5 @@
 import re
+import time
 
 import requests
 
@@ -18,6 +19,12 @@ NO_PROGRAM_DOWNLOADS = ("philpapers.org", "philarchive.org", "jstor.org", "muse.
 ARXIV_LINK = re.compile(r"arxiv\.org/abs/(.+?)(?:v\d+)?/?(?:[?#]|$)", re.I)
 # OpenAlex accepts up to 100 values in one filter, but long URLs fail, so we stay lower.
 MAX_DOIS_PER_REQUEST = 50
+TIMEOUT_SECONDS = 60
+# When OpenAlex says "too many requests" (429) or fails for a moment (5xx), it is asked again after
+# these waits; if it still refuses, the error goes up. A longer "Retry-After" from OpenAlex is respected,
+# up to MAX_RETRY_AFTER_SECONDS (beyond that it is the daily limit, and waiting doesn't help).
+RETRY_WAITS_SECONDS = (5, 30, 120)
+MAX_RETRY_AFTER_SECONDS = 600
 
 
 class OpenAlexSource(Source):
@@ -126,9 +133,30 @@ class OpenAlexSource(Source):
         return papers
 
     def _get(self, url: str, params: dict) -> requests.Response:
+        """Ask OpenAlex; when it says "too many requests" (or fails for a moment), wait and ask again.
+
+        The errors never show the address: it carries the API key.
+        """
         if OPENALEX_API_KEY:
             params = {**params, "api_key": OPENALEX_API_KEY}
-        return requests.get(url, params=params)
+        for wait in (*RETRY_WAITS_SECONDS, None):
+            try:
+                response = requests.get(url, params=params, timeout=TIMEOUT_SECONDS)
+            except requests.RequestException as error:
+                problem = f"no responde ({type(error).__name__})"
+            else:
+                if response.ok:
+                    return response
+                if response.status_code != 429 and response.status_code < 500:
+                    raise OpenAlexError(f"OpenAlex ha respondido {response.status_code}: {answer_message(response)}")
+                problem = f"ha respondido {response.status_code}: {answer_message(response)}"
+                retry_after = response.headers.get("Retry-After", "")
+                if wait is not None and retry_after.isdigit():
+                    wait = max(wait, min(int(retry_after), MAX_RETRY_AFTER_SECONDS))
+            if wait is None:
+                raise OpenAlexError(f"OpenAlex {problem}")
+            print(f"  OpenAlex {problem}; se reintenta dentro de {wait} s")
+            time.sleep(wait)
 
     def _build_paper(self, work: dict) -> Paper:
         # The journal (or repository) where the work was published; it can be unknown.
@@ -197,6 +225,22 @@ FRONT_MATTER_STARTS = (
     "normas para autores", "normas de publicacion", "table of contents", "front matter",
     "back matter", "instructions for authors", "issue information",
 )
+
+
+class OpenAlexError(requests.HTTPError):
+    """An OpenAlex error whose message doesn't carry the address (nor, in it, the API key)."""
+
+
+def answer_message(response: requests.Response) -> str:
+    """What OpenAlex says about the error, without the address it repeats."""
+    try:
+        data = response.json()
+        message = str(data.get("message") or data.get("error") or "")
+    except ValueError:
+        message = response.text
+    if OPENALEX_API_KEY:
+        message = message.replace(OPENALEX_API_KEY, "***")
+    return message.strip()[:200] or response.reason
 
 
 def is_front_matter(title: str | None) -> bool:

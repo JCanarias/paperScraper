@@ -4,11 +4,13 @@ For each of them, as a new search by author would do, but without asking anythin
 1. looks for works that weren't in its list yet (OpenAlex and the other libraries) and adds them;
    the ones not in Calibre are marked to download;
 2. looks again for a file of every chosen work still without one (local catalogues and PDF finders);
+   a work that keeps failing waits longer each time (1, 2, 4... up to 30 days), unless it gets new links;
 3. sends every new file to Calibre and a Telegram message for each one.
 
 The tower runs it every day at 6:00 (the "daily" container, tower/scheduler.py). By hand:
     docker compose exec daily python daily_check.py
 """
+import datetime as dt
 import sys
 import traceback
 from pathlib import Path
@@ -22,6 +24,9 @@ from run_lock import take_daily_lock
 from sources.openalex import OpenAlexSource
 from storage import author_profiles, find_saved_lists, load_content, load_papers, update_papers
 from telegram_notify import send_message
+
+# The longest wait between two searches for the file of a work that keeps failing.
+MAX_DAYS_BETWEEN_CHECKS = 30
 
 
 def followed_lists() -> list[Path]:
@@ -42,6 +47,9 @@ def check_author(source: OpenAlexSource, papers_file: Path) -> None:
 
 def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict, papers: list[Paper]) -> None:
     folder = papers_file.parent
+    today = dt.date.today()
+    # A work that gets new links today (a new copy found) is tried today, whatever it failed before.
+    links_before = {id(paper): len(paper.pdf_urls) for paper in papers}
     try:
         found = keep_chosen_languages(merge_duplicates(main.find_author_works(source, author_profiles(content))))
     except Exception as error:
@@ -62,17 +70,38 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
     pending = [paper for paper in papers
                if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
                and paper_language_allowed(paper)]
-    print(f"Pendientes de archivo: {len(pending)}")
     try:
         if pending:
             found_in_catalogues = main.add_catalogue_copies(pending)
             if found_in_catalogues:
                 print(f"Encontradas en los catálogos locales: {found_in_catalogues}")
-            main.find_and_download_pdfs(pending, folder)
+        due = [paper for paper in pending
+               if due_today(paper, today) or len(paper.pdf_urls) > links_before.get(id(paper), 0)]
+        print(f"Pendientes de archivo: {len(pending)}; se buscan hoy {len(due)} "
+              f"(las que fallaron hace poco esperan unos días)")
+        if due:
+            main.find_and_download_pdfs(due, folder)
+            for paper in due:
+                if not is_downloaded(paper, folder):
+                    paper.failed_checks += 1
+                    paper.last_check = today.isoformat()
     finally:
         for paper in papers:
             paper.downloaded = is_downloaded(paper, folder)
         update_papers(papers_file, papers)
+
+
+def due_today(paper: Paper, today: dt.date) -> bool:
+    """Whether to look for the work's file today: after each failed check, the wait doubles
+    (1, 2, 4, 8, 16 days), up to MAX_DAYS_BETWEEN_CHECKS."""
+    if not paper.failed_checks or not paper.last_check:
+        return True
+    try:
+        last_check = dt.date.fromisoformat(paper.last_check)
+    except ValueError:
+        return True
+    wait = min(2 ** (paper.failed_checks - 1), MAX_DAYS_BETWEEN_CHECKS)
+    return today >= last_check + dt.timedelta(days=wait)
 
 
 def add_new_works(papers: list[Paper], found: list[Paper]) -> list[Paper]:
@@ -114,6 +143,8 @@ def on_download(paper: Paper, folder: Path) -> None:
             calibre_state = f"No se ha podido subir a Calibre: {error}"
     else:
         calibre_state = "No hay Calibre configurado; está en la carpeta."
+    # The log of the check says it too, not only Telegram.
+    print(f"    {calibre_state} [{paper.source or 'enlace de OpenAlex'}]")
     lines = [
         "📥 Nueva obra descargada",
         f"{paper.title} ({paper.year or 's. f.'})",

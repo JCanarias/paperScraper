@@ -7,3 +7,4 @@ truststore
 lxml
 selenium
 aiohttp
+langdetect

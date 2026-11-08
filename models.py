@@ -37,6 +37,10 @@ class Paper:
     # Its file was sent to Calibre and Calibre confirmed it has it, so the local copy was deleted.
     # It stays "in Calibre" even if Calibre's record changes later, so it is never downloaded again.
     sent_to_calibre: bool = False
+    # Daily checks that looked for its file in vain, and the day of the last one ("2026-11-08"):
+    # the more it has failed, the longer the daily check waits before trying again (daily_check.py).
+    failed_checks: int = 0
+    last_check: str | None = None
 
     def all_identifiers(self) -> dict[str, str]:
         """DOI, ISBN and the other ids of the work, with the lowercase scheme names Calibre uses."""
