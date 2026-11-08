@@ -7,3 +7,4 @@ sci_hub_cookies.json
 library/
 telegram_bot/.env
 data/
+*.log

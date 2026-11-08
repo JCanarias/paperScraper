@@ -120,3 +120,7 @@ docker compose restart web                          # reinicia la terminal (cier
 Reiniciar `web` cierra la sesión de la terminal y lo que esté corriendo en ella.
 Los cambios de código solo necesitan volver al menú (cada opción arranca `main.py` de nuevo);
 los de `requirements.txt` o `Dockerfile`, `./update.sh`.
+
+## Trucos
+
+Ver los logs, traer archivos al PC y otros comandos útiles: [TRUCOS.md](TRUCOS.md).

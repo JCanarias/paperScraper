@@ -90,3 +90,12 @@ Estado a 2 de noviembre de 2026.
   - Las fuentes no distinguen el papel de cada persona, así que todos aparecen como autores.
   - Calibre solo lo admitiría con columnas personalizadas.
 - **Credenciales de Calibre:** crear el usuario `automations` (no de solo lectura) y ponerlo en `.env` (`CALIBRE_URL`, `CALIBRE_USERNAME`, `CALIBRE_PASSWORD`). Probarlo contra el servidor real.
+- **Frontend propio para Calibre:** una web nuestra para la biblioteca, en la torre, que use las mismas
+  llamadas que la web oficial del servidor de Calibre (las de `calibre_library.py`), nunca `metadata.db` directamente.
+  - Biblioteca: buscar, portadas, filtrar por autor, etiqueta o serie; ficha de cada libro.
+  - Lector de PDF (pdf.js) con subrayado y notas.
+  - **Las anotaciones y subrayados van en el propio archivo:** es la biblioteca personal y lo que interesa es que
+    el PDF lleve lo marcado, para verlo en cualquier lector. Nada de guardarlas aparte. Al guardar, el PDF del
+    libro en Calibre se sustituye por el subrayado (pensar si se conserva el original como ORIGINAL_PDF).
+  - Con el mismo inicio de sesión que la terminal web (`tower/web_login.py`).
+  - Más adelante, quizá: las búsquedas de paperScraper desde esta web en vez de la terminal.
