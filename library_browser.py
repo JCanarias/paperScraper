@@ -30,7 +30,9 @@ def folder_files(folder: Path) -> list[Path]:
 
 
 def folders_with_files(library: Path) -> list[Path]:
-    folders = [library, *sorted(path for path in library.rglob("*") if path.is_dir())]
+    # Hidden folders (.logs) are the program's, not downloads.
+    folders = [library, *sorted(path for path in library.rglob("*") if path.is_dir()
+                                and not any(part.startswith(".") for part in path.relative_to(library).parts))]
     return [folder for folder in folders if folder_files(folder)]
 
 
