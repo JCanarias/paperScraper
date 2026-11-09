@@ -28,7 +28,7 @@ from sources.gutenberg import GutenbergSource
 from sources.hathitrust import HathiTrustSource
 from sources.internet_archive import InternetArchiveSource
 from sources.names import name_words
-from sources.openalex import OpenAlexSource
+from sources.openalex import OpenAlexError, OpenAlexSource
 from sources.philarchive import PhilArchiveSource
 from sources.wikisource import WikisourceSource
 from update_indexes import INDEXED_SOURCES, update_indexes
@@ -847,6 +847,18 @@ def main() -> None:
         ],
     ).ask()
 
+    try:
+        run_choice(choice, source)
+    except OpenAlexError as error:
+        # Usually the key's daily budget is spent (often by the daily check): a clear message,
+        # not a traceback.
+        print(f"\n{error}")
+        if "429" in str(error):
+            print("OpenAlex no atiende más peticiones con esta clave por hoy (el presupuesto diario de la clave "
+                  "está gastado; lo comparte con la revisión diaria). Prueba más tarde o mañana.")
+
+
+def run_choice(choice: str | None, source: OpenAlexSource) -> None:
     if choice == "author":
         search_by_author(source)
     elif choice == "title":
