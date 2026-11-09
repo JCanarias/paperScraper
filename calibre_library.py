@@ -15,6 +15,7 @@ from urllib.parse import quote
 import requests
 from requests.auth import AuthBase, HTTPBasicAuth, HTTPDigestAuth
 
+from calibre_memory import CalibreMemory
 from duplicates import title_words
 from models import Paper
 from sources.names import surnames
@@ -34,8 +35,13 @@ SHARED_FIELDS = ("tags", "series", "publisher")
 
 class CalibreLibrary:
 
-    def __init__(self, url: str, username: str, password: str, library_id: str = "", tag: str = DEFAULT_TAG):
+    def __init__(self, url: str, username: str, password: str, library_id: str = "", tag: str = DEFAULT_TAG,
+                 memory: CalibreMemory | None = None):
         self.url = url.rstrip("/")
+        # Every work this program uploaded: if the user deletes it in Calibre, it is not downloaded again.
+        self.memory = memory
+        # How many works of the last mark_papers were deleted by the user in Calibre.
+        self.deleted_by_user = 0
         self.tag = tag
         self.session = requests.Session()
         self.session.auth = self._choose_auth(username, password)
@@ -62,6 +68,7 @@ class CalibreLibrary:
                 os.environ.get("CALIBRE_PASSWORD", ""),
                 os.environ.get("CALIBRE_LIBRARY", "").strip(),
                 os.environ.get("CALIBRE_TAG", "").strip() or DEFAULT_TAG,
+                CalibreMemory(),
             )
         except Exception as error:
             print(f"Aviso: no se puede conectar con Calibre ({url}): {error}")
@@ -81,10 +88,21 @@ class CalibreLibrary:
         return len(book_ids)
 
     def mark_papers(self, papers: list[Paper]) -> int:
-        """Set `in_calibre` on the works the library already has; return how many."""
+        """Set `in_calibre` on the works the library has, or had (the user deleted them); return how many."""
+        self.deleted_by_user = 0
         for paper in papers:
-            paper.in_calibre = paper.sent_to_calibre or self.contains(paper)
+            here = self.contains(paper)
+            deleted = not here and self.was_deleted(paper)
+            self.deleted_by_user += deleted
+            paper.in_calibre = paper.sent_to_calibre or here or deleted
         return sum(paper.in_calibre for paper in papers)
+
+    def was_deleted(self, paper: Paper) -> bool:
+        """It was in the library once (calibre_memory.py) and isn't now: the user deleted it."""
+        if self.memory is None:
+            return False
+        keys = identifier_keys(paper.all_identifiers()) | title_keys(paper.title, paper.authors)
+        return self.memory.knows(keys) and not self.contains(paper)
 
     def contains(self, paper: Paper) -> bool:
         if any(key in self.identifiers for key in identifier_keys(paper.all_identifiers())):
@@ -115,6 +133,8 @@ class CalibreLibrary:
         # to the day before in some time zones, so we set them again.
         self._set_fields(result["book_id"], book_fields(paper))
         self._add_to_index(paper.title, paper.authors, paper.all_identifiers(), [file_path.suffix])
+        if self.memory is not None:
+            self.memory.remember(identifier_keys(paper.all_identifiers()) | title_keys(paper.title, paper.authors))
         paper.in_calibre = True
         return result["book_id"]
 

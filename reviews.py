@@ -39,10 +39,12 @@ def doubtful(paper: Paper) -> bool:
 
 def needs_review(paper: Paper, folder: Path) -> bool:
     """A doubtful work the user hasn't decided on and that would be downloaded otherwise."""
+    # In Calibre, or deleted there by the user (calibre_memory.py): nothing to ask.
+    if paper.in_calibre:
+        return False
     if paper.review == "pending":
         return True
-    return (paper.review is None and doubtful(paper) and not paper.in_calibre
-            and not is_downloaded(paper, folder))
+    return paper.review is None and doubtful(paper) and not is_downloaded(paper, folder)
 
 
 def set_pending(paper: Paper) -> None:
@@ -88,7 +90,7 @@ def ask_by_telegram(library: Path = LIBRARY, limit: int = MAX_QUESTIONS_PER_DAY)
         for paper in papers:
             if asked >= limit:
                 break
-            if paper.review != "pending" or paper.review_id:
+            if paper.review != "pending" or paper.review_id or paper.in_calibre:
                 continue
             review_id = secrets.token_hex(5)
             text = "🔎 ¿Es de este autor? ¿La descargo?\n" + describe(paper, papers_file.parent)
@@ -173,6 +175,8 @@ def download_accepted(accepted: dict[Path, set[str]]) -> None:
     for papers_file, review_ids in accepted.items():
         folder = papers_file.parent
         papers = load_papers(papers_file)
+        if main.calibre:
+            main.calibre.mark_papers(papers)
         # The daily check may have looked for some of them today already (their author is followed).
         today = dt.date.today().isoformat()
         chosen = [paper for paper in papers if paper.review_id in review_ids and not is_downloaded(paper, folder)
@@ -233,6 +237,8 @@ def review_in_menu(library: Path = LIBRARY) -> None:
     lists = []
     for papers_file in find_saved_lists(library):
         papers = load_papers(papers_file)
+        if main.calibre:
+            main.calibre.mark_papers(papers)
         waiting = [paper for paper in papers if needs_review(paper, papers_file.parent)]
         if waiting:
             lists.append((papers_file, papers, waiting))

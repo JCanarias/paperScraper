@@ -73,6 +73,21 @@ scp C:\Users\jorge\jcc.main\paperScraper\.env jorge@100.71.69.117:~/paperScraper
 
 Los `.log` que traigas a la carpeta del proyecto no se suben a git (`.gitignore`).
 
+## Volver a descargar algo que borré de Calibre
+
+Lo que sube el programa queda apuntado en `library/.calibre_memory.sqlite`. Si lo borras de Calibre, no se
+vuelve a descargar desde ninguna lista. Lo que añadiste a Calibre a mano no se apunta: si lo borras,
+el programa puede volver a descargarlo.
+
+Si borraste algo por error y quieres que se pueda volver a descargar:
+
+```bash
+docker compose exec web python calibre_memory.py forget "palabras del título"
+docker compose exec web python calibre_memory.py forget-id doi:10.1234/abcd   # si tenía DOI (o isbn:...)
+```
+
+Después, búscalo otra vez (por autor o por título) o usa "Reintentar las obras pendientes".
+
 ## Otras cosas útiles
 
 ```bash

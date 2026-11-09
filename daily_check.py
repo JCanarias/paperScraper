@@ -65,6 +65,8 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
     new = add_new_works(papers, found)
     if main.calibre:
         main.calibre.mark_papers(papers)
+        if main.calibre.deleted_by_user:
+            print(f"Borradas por ti en Calibre (no se descargan): {main.calibre.deleted_by_user}")
         removed = main.remove_files_in_calibre(papers, folder)
         if removed:
             print(f"Borrados {removed} archivos que ya están en Calibre")

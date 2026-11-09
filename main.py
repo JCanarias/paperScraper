@@ -6,7 +6,7 @@ import questionary
 import requests
 
 from bibliography import find_works, read_references
-from calibre_library import CalibreLibrary
+from calibre_library import CalibreLibrary, identifier_keys, title_keys
 from downloader import add_metadata, download_paper, downloaded_file, is_downloaded, tag_repeated_filenames
 from duplicates import combine, merge_duplicates, shared_surname, title_words
 from manual_download import download_by_hand
@@ -465,6 +465,8 @@ def prepare_list(papers: list[Paper], only_chosen_languages: bool = True) -> lis
         in_calibre = calibre.mark_papers(papers)
         if in_calibre:
             print(f"{in_calibre} ya están en Calibre.")
+        if calibre.deleted_by_user:
+            print(f"De ellas, {calibre.deleted_by_user} las borraste de Calibre: no se descargan.")
     tag_repeated_filenames(papers)
     return papers
 
@@ -836,11 +838,26 @@ def connect_calibre() -> None:
     calibre = CalibreLibrary.from_environment()
     if calibre is None:
         return
+    first_time = calibre.memory is not None and calibre.memory.is_new
     try:
         print(f"Calibre: {calibre.load_index()} libros en la biblioteca.")
     except Exception as error:
         print(f"Aviso: no se puede leer la biblioteca de Calibre: {error}")
         calibre = None
+        return
+    if first_time:
+        remember_sent_works(calibre)
+
+
+def remember_sent_works(library: CalibreLibrary) -> None:
+    """Start the memory of Calibre (calibre_memory.py) with the works sent before it existed:
+    some may have been deleted in Calibre already, and then they would be downloaded again."""
+    keys = set()
+    for papers_file in find_saved_lists(LIBRARY_FOLDER):
+        for paper in load_papers(papers_file):
+            if paper.sent_to_calibre:
+                keys |= identifier_keys(paper.all_identifiers()) | title_keys(paper.title, paper.authors)
+    library.memory.remember(keys)
 
 
 def main() -> None:

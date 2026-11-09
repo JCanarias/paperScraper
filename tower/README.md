@@ -116,6 +116,12 @@ una biblioteca fiable, sí.
 Lo descartado no se vuelve a descargar, tampoco al buscar otra vez al autor. Lo mismo vale para lo que borres
 en "Ver y borrar archivos" diciendo que no vuelva.
 
+### Lo que borras de Calibre
+
+Lo que subió el programa y borras después en Calibre no se vuelve a descargar ni a subir, desde ninguna lista
+(`calibre_memory.py`). Lo que añadiste a Calibre a mano sí puede volver si lo borras. Para deshacer un borrado,
+ver [TRUCOS.md](TRUCOS.md).
+
 Los botones los atiende el bot de `telegram_bot/` (el servicio `telegram-bot`, fuera de Docker): pasa tu
 respuesta al contenedor `paperscraper_daily` con `docker exec`. Por eso el usuario del bot tiene que poder usar
 docker (estar en el grupo `docker`), y tras actualizar hay que reiniciarlo: `sudo systemctl restart telegram-bot`.
