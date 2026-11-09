@@ -75,6 +75,10 @@ Estado a 2 de noviembre de 2026.
 - **Qué hay:** se puede buscar (API SRU).
 - **Por qué no:** las descargas están detrás de Cloudflare.
 
+## Fuentes nuevas por revisar
+
+La lista de fuentes propuestas, con su valoración: [SOURCES_TO_CHECK.md](SOURCES_TO_CHECK.md).
+
 ## Otras mejoras pendientes
 
 - **Bot de Telegram:**
