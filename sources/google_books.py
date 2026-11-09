@@ -4,8 +4,10 @@ Google Books API (free tier) allows searching their catalogue. While direct PDF 
 are prohibited by terms of service, we can:
 1. Find books via Google Books API
 2. Identify public domain books via 'identifier' field
-3. Locate copies in Internet Archive (Google identifiers like 'goog' map to IA copies)
-4. Fall back to Google Books link for user browsing
+3. Keep the Google Books link, for the user to look at (it is not a file)
+
+A copy in Internet Archive used to be looked for by the first author's name alone, which gave the
+file of any other book of that author: it is no longer done (Internet Archive is searched by itself).
 
 This source respects Google's ToS by not bypassing protections or downloading
 restricted content. Public domain books are sourced from Internet Archive instead.
@@ -18,8 +20,7 @@ import requests
 
 from models import Paper
 from sources.base import BookSource
-from sources.internet_archive import InternetArchiveSource
-from sources.names import name_words, readable_name
+from sources.names import name_words, readable_name, same_author
 
 GOOGLE_BOOKS_API = "https://www.googleapis.com/books/v1/volumes"
 TIMEOUT_SECONDS = 10
@@ -33,12 +34,13 @@ class GoogleBooksSource(BookSource):
     def __init__(self):
         # API key is optional - searches work without it but with lower rate limits
         self.api_key = os.getenv("GOOGLE_BOOKS_API_KEY")
-        self.internet_archive = InternetArchiveSource()
 
     def search_books_by_author(self, author_name: str, limit: int) -> list[Paper]:
         """Search Google Books by author."""
         query = f"inauthor:{author_name}"
-        return self._search(query, limit)
+        # Google matches loosely (one word of the name is enough): the other people are left out.
+        return [paper for paper in self._search(query, limit)
+                if any(same_author(author_name, author) for author in paper.authors)]
 
     def search_books_by_title(self, words: str, limit: int) -> list[Paper]:
         """Search Google Books by title."""
@@ -94,7 +96,7 @@ class GoogleBooksSource(BookSource):
         return papers
 
     def _item_to_paper(self, item: dict) -> Optional[Paper]:
-        """Convert Google Books API item to Paper, preferring IA fallback."""
+        """Convert Google Books API item to Paper."""
         volume_info = item.get("volumeInfo", {})
         title = volume_info.get("title")
         if not title:
@@ -109,20 +111,11 @@ class GoogleBooksSource(BookSource):
             except (ValueError, IndexError):
                 pass
 
-        # Check for Internet Archive fallback
+        # The Google Books page: not a file, but it lets the user see the book when asked about it.
         pdf_urls = []
-
-        # Try to find in Internet Archive using title/author
-        if authors:
-            ia_results = self.internet_archive.search_books_by_author(authors[0], 1)
-            if ia_results and ia_results[0].pdf_urls:
-                pdf_urls.extend(ia_results[0].pdf_urls)
-
-        # If not found in IA, provide Google Books link
-        if not pdf_urls:
-            google_link = item.get("volumeInfo", {}).get("infoLink")
-            if google_link:
-                pdf_urls.append(google_link)
+        google_link = volume_info.get("infoLink")
+        if google_link:
+            pdf_urls.append(google_link)
 
         return Paper(
             title=title,

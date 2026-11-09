@@ -2,10 +2,12 @@
 
 For each of them, as a new search by author would do, but without asking anything:
 1. looks for works that weren't in its list yet (OpenAlex and the other libraries) and adds them;
-   the ones not in Calibre are marked to download;
+   the ones not in Calibre are marked to download, except the doubtful ones (only in Internet Archive
+   or Google Books), which wait for the user's answer in Telegram (reviews.py);
 2. looks again for a file of every chosen work still without one (local catalogues and PDF finders);
    a work that keeps failing waits longer each time (1, 2, 4... up to 30 days), unless it gets new links;
 3. sends every new file to Calibre and a Telegram message for each one.
+At the end it asks about the doubtful works by Telegram, and downloads the ones accepted meanwhile.
 
 The tower runs it every day at 6:00 (the "daily" container, tower/scheduler.py). By hand:
     docker compose exec daily python daily_check.py
@@ -19,7 +21,9 @@ import main
 from downloader import is_downloaded, tag_repeated_filenames
 from duplicates import merge_duplicates, same_work
 from languages import keep_chosen_languages, languages_label, paper_language_allowed, using_languages
+import sources.openalex
 from models import Paper
+from reviews import apply_decisions, ask_by_telegram, doubtful, download_accepted, needs_review, set_pending
 from run_lock import take_daily_lock
 from sources.openalex import OpenAlexSource
 from storage import author_profiles, find_saved_lists, load_content, load_papers, update_papers
@@ -27,6 +31,8 @@ from telegram_notify import send_message
 
 # The longest wait between two searches for the file of a work that keeps failing.
 MAX_DAYS_BETWEEN_CHECKS = 30
+# What the daily check leaves of the OpenAlex key's daily budget (1 $ for a free key), for the menu.
+OPENALEX_BUDGET_LEFT_FOR_MENU_USD = 0.30
 
 
 def followed_lists() -> list[Path]:
@@ -62,10 +68,18 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
         removed = main.remove_files_in_calibre(papers, folder)
         if removed:
             print(f"Borrados {removed} archivos que ya están en Calibre")
-    # As in a search by author: everything new that isn't in Calibre is downloaded.
+    # As in a search by author: everything new that isn't in Calibre is downloaded, except the
+    # doubtful works, which wait for the user (asked by Telegram at the end of the check).
     for paper in new:
         paper.wanted = not paper.in_calibre
-    print(f"Obras nuevas: {len(new)}")
+        if paper.wanted and doubtful(paper):
+            set_pending(paper)
+    # The doubtful works chosen before the reviews existed are asked about too.
+    for paper in papers:
+        if paper.wanted and paper.review is None and needs_review(paper, folder):
+            set_pending(paper)
+    waiting = sum(paper.review == "pending" for paper in papers)
+    print(f"Obras nuevas: {len(new)}" + (f"; dudosas por revisar: {waiting}" if waiting else ""))
 
     pending = [paper for paper in papers
                if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
@@ -168,6 +182,9 @@ def main_check() -> None:
             return
         main.connect_calibre()
         main.DOWNLOAD_LISTENERS.append(on_download)
+        sources.openalex.budget_to_keep_usd = OPENALEX_BUDGET_LEFT_FOR_MENU_USD
+        # The answers given in Telegram since the last check.
+        accepted = apply_decisions()
         source = OpenAlexSource()
         for papers_file in lists:
             try:
@@ -175,6 +192,13 @@ def main_check() -> None:
             except Exception:
                 # One author that fails doesn't stop the others.
                 traceback.print_exc()
+        # The works accepted in Telegram (before or during the check) that are still without a file.
+        for papers_file, review_ids in apply_decisions().items():
+            accepted.setdefault(papers_file, set()).update(review_ids)
+        download_accepted(accepted)
+        asked = ask_by_telegram()
+        if asked:
+            print(f"\nPreguntadas por Telegram {asked} obras dudosas.")
         print("\n✓ Revisión diaria terminada.")
     except Exception as error:
         traceback.print_exc()

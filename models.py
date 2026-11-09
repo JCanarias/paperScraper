@@ -41,6 +41,14 @@ class Paper:
     # the more it has failed, the longer the daily check waits before trying again (daily_check.py).
     failed_checks: int = 0
     last_check: str | None = None
+    # The other places where the same work was found (duplicates.combine): a work found only in
+    # Internet Archive or Google Books is doubtful and the user is asked first (reviews.py).
+    also_found_in: list[str] = field(default_factory=list)
+    # The user's decision on it: "pending" (asked, no answer yet), "accepted", or "rejected"
+    # (never downloaded again, also after a new search of the author).
+    review: str | None = None
+    # The id of the Telegram question about it (its buttons carry it).
+    review_id: str | None = None
 
     def all_identifiers(self) -> dict[str, str]:
         """DOI, ISBN and the other ids of the work, with the lowercase scheme names Calibre uses."""

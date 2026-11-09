@@ -21,6 +21,16 @@ Solo responde a los usuarios cuyo id esté en `TELEGRAM_ALLOWED_USER_IDS`.
 4. Arráncalo (`.venv/bin/python telegram_bot/bot.py`), mándale `/start` desde el móvil:
    te responderá con tu id. Ponlo en `TELEGRAM_ALLOWED_USER_IDS` y reinicia el bot.
 
+## Preguntas de paperScraper (obras dudosas)
+
+La revisión diaria de paperScraper manda con este bot preguntas con botones ("¿Es de este autor?").
+El bot atiende los botones ejecutando `python reviews.py` en el contenedor `paperscraper_daily`
+(otro nombre: `PAPERSCRAPER_CONTAINER` en `.env`). Para eso el usuario del servicio tiene que poder usar docker:
+
+```bash
+groups jorge | grep -q docker || sudo usermod -aG docker jorge   # y reiniciar el servicio
+```
+
 ## Que arranque solo con la torre (systemd)
 
 ```bash

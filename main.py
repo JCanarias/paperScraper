@@ -29,6 +29,7 @@ from sources.hathitrust import HathiTrustSource
 from sources.internet_archive import InternetArchiveSource
 from sources.names import name_words
 from sources.openalex import OpenAlexError, OpenAlexSource
+from reviews import ask_doubtful, doubtful, needs_review, review_in_menu, set_pending
 from sources.philarchive import PhilArchiveSource
 from sources.wikisource import WikisourceSource
 from update_indexes import INDEXED_SOURCES, update_indexes
@@ -408,8 +409,20 @@ def download_author_works(source: OpenAlexSource, selected_authors: list[Author]
         return
     keep_earlier_wanted(papers, folder)
 
-    # Everything that isn't in Calibre yet is downloaded; the list keeps every work found.
-    to_download = [paper for paper in papers if not paper.in_calibre]
+    # Everything that isn't in Calibre yet is downloaded (but what the user rejected), the doubtful
+    # works only if the user ticks them; the list keeps every work found.
+    candidates = [paper for paper in papers if not paper.in_calibre and paper.review != "rejected"]
+    waiting = [paper for paper in candidates if doubtful(paper) and paper.review != "accepted"]
+    if waiting:
+        print(f"\n{len(waiting)} obras solo están en Internet Archive o Google Books.")
+        chosen = ask_doubtful(waiting, main_author.name)
+        for paper in waiting:
+            if chosen is None:
+                # Ctrl+C: they are asked again in "Revisar obras dudosas" (or by Telegram, if followed).
+                set_pending(paper)
+            else:
+                paper.review = "accepted" if any(paper is one for one in chosen) else "rejected"
+    to_download = [paper for paper in candidates if not doubtful(paper) or paper.review == "accepted"]
     for paper in to_download:
         paper.wanted = True
     try:
@@ -464,6 +477,8 @@ def keep_earlier_wanted(papers: list[Paper], folder: Path) -> None:
         return
     earlier = load_papers(papers_file)
     wanted = {work_key(paper) for paper in earlier if paper.wanted}
+    # The user's answers about doubtful works, and the works they don't want (rejected).
+    reviews = {work_key(paper): (paper.review, paper.review_id) for paper in earlier if paper.review}
     # The ones sent to Calibre (and deleted here) must not be downloaded again.
     sent = {work_key(paper) for paper in earlier if paper.sent_to_calibre}
     for paper in papers:
@@ -471,6 +486,10 @@ def keep_earlier_wanted(papers: list[Paper], folder: Path) -> None:
             paper.wanted = True
         if work_key(paper) in sent:
             paper.sent_to_calibre = paper.in_calibre = True
+        if work_key(paper) in reviews:
+            paper.review, paper.review_id = reviews[work_key(paper)]
+            if paper.review in ("rejected", "pending"):
+                paper.wanted = False
 
 
 def work_key(paper: Paper) -> str:
@@ -659,7 +678,7 @@ def retry_pending() -> None:
             calibre.mark_papers(papers)
         pending = [paper for paper in papers
                    if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
-                   and list_language_allowed(papers_file, paper)]
+                   and list_language_allowed(papers_file, paper) and not needs_review(paper, folder)]
         if not pending:
             continue
 
@@ -840,6 +859,7 @@ def main() -> None:
             questionary.Choice("Descargar a mano las pendientes (en el navegador)", value="by_hand"),
             questionary.Choice("Subir a Calibre lo ya descargado", value="upload"),
             questionary.Choice("Ver y borrar archivos de la biblioteca", value="browse"),
+            questionary.Choice("Revisar obras dudosas (Internet Archive, Google Books)", value="reviews"),
             questionary.Choice("Actualizar los catálogos locales (Dialnet, PhilArchive, DOAB)", value="indexes"),
             questionary.Choice("Poner metadatos a los archivos ya descargados", value="tag"),
             questionary.Choice("Autores que seguir (revisión diaria)", value="follow"),
@@ -850,12 +870,8 @@ def main() -> None:
     try:
         run_choice(choice, source)
     except OpenAlexError as error:
-        # Usually the key's daily budget is spent (often by the daily check): a clear message,
-        # not a traceback.
+        # Usually the key's daily budget is spent: a clear message, not a traceback.
         print(f"\n{error}")
-        if "429" in str(error):
-            print("OpenAlex no atiende más peticiones con esta clave por hoy (el presupuesto diario de la clave "
-                  "está gastado; lo comparte con la revisión diaria). Prueba más tarde o mañana.")
 
 
 def run_choice(choice: str | None, source: OpenAlexSource) -> None:
@@ -873,6 +889,8 @@ def run_choice(choice: str | None, source: OpenAlexSource) -> None:
         upload_downloaded()
     elif choice == "browse":
         browse_library(LIBRARY_FOLDER)
+    elif choice == "reviews":
+        review_in_menu(LIBRARY_FOLDER)
     elif choice == "indexes":
         update_indexes(list(INDEXED_SOURCES))
     elif choice == "tag":

@@ -1,3 +1,4 @@
+import datetime as dt
 import re
 import time
 
@@ -25,6 +26,11 @@ TIMEOUT_SECONDS = 60
 # up to MAX_RETRY_AFTER_SECONDS (beyond that it is the daily limit, and waiting doesn't help).
 RETRY_WAITS_SECONDS = (5, 30, 120)
 MAX_RETRY_AFTER_SECONDS = 600
+# Each key has a daily budget (1 $ for a free one): a search costs 0.001 $, a page of a list 0.0001 $,
+# a single work by its id nothing. Every answer says what is left (X-RateLimit-Remaining-USD).
+# The daily check sets budget_to_keep_usd, so it stops before spending what the menu needs.
+budget_left_usd: float | None = None
+budget_to_keep_usd: float = 0.0
 
 
 class OpenAlexSource(Source):
@@ -137,22 +143,30 @@ class OpenAlexSource(Source):
 
         The errors never show the address: it carries the API key.
         """
+        global budget_left_usd
         if OPENALEX_API_KEY:
             params = {**params, "api_key": OPENALEX_API_KEY}
+        if budget_to_keep_usd and budget_left_usd is not None and budget_left_usd < budget_to_keep_usd:
+            raise OpenAlexBudgetSpent(f"Se deja sin gastar lo que queda del presupuesto diario de OpenAlex "
+                                      f"({budget_left_usd:.2f} $), para usar el menú.")
         for wait in (*RETRY_WAITS_SECONDS, None):
             try:
                 response = requests.get(url, params=params, timeout=TIMEOUT_SECONDS)
             except requests.RequestException as error:
                 problem = f"no responde ({type(error).__name__})"
             else:
+                budget_left_usd = header_number(response, "X-RateLimit-Remaining-USD", budget_left_usd)
                 if response.ok:
                     return response
                 if response.status_code != 429 and response.status_code < 500:
                     raise OpenAlexError(f"OpenAlex ha respondido {response.status_code}: {answer_message(response)}")
                 problem = f"ha respondido {response.status_code}: {answer_message(response)}"
-                retry_after = response.headers.get("Retry-After", "")
-                if wait is not None and retry_after.isdigit():
-                    wait = max(wait, min(int(retry_after), MAX_RETRY_AFTER_SECONDS))
+                retry_after = header_number(response, "Retry-After", None)
+                # The daily budget is spent: waiting a few minutes doesn't help.
+                if response.status_code == 429 and (budget_left_usd == 0 or (retry_after or 0) > MAX_RETRY_AFTER_SECONDS):
+                    raise OpenAlexBudgetSpent(budget_spent_message(response))
+                if wait is not None and retry_after:
+                    wait = max(wait, int(retry_after))
             if wait is None:
                 raise OpenAlexError(f"OpenAlex {problem}")
             print(f"  OpenAlex {problem}; se reintenta dentro de {wait} s")
@@ -229,6 +243,26 @@ FRONT_MATTER_STARTS = (
 
 class OpenAlexError(requests.HTTPError):
     """An OpenAlex error whose message doesn't carry the address (nor, in it, the API key)."""
+
+
+class OpenAlexBudgetSpent(OpenAlexError):
+    """The key's daily budget is spent (or what is left is kept for the menu)."""
+
+
+def header_number(response: requests.Response, name: str, default: float | None) -> float | None:
+    try:
+        return float(response.headers[name])
+    except (KeyError, TypeError, ValueError):
+        return default
+
+
+def budget_spent_message(response: requests.Response) -> str:
+    message = "OpenAlex no atiende más peticiones con esta clave hasta que se renueve su presupuesto diario"
+    seconds = header_number(response, "X-RateLimit-Reset", None) or header_number(response, "Retry-After", None)
+    if seconds:
+        renewal = dt.datetime.now() + dt.timedelta(seconds=seconds)
+        message += f" (hacia las {renewal:%H:%M})"
+    return message + "."
 
 
 def answer_message(response: requests.Response) -> str:

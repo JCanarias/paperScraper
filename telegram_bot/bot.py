@@ -1,7 +1,12 @@
 """Telegram bot that saves the text documents it receives (pdf, epub, mobi...) into a local folder.
 
+It also answers the buttons of the daily check's questions about doubtful works ("¿Es de este autor?"):
+it passes the answer to paperScraper in its Docker container (reviews.py), which downloads the work
+or forgets it. The user running the bot must be able to use docker (the "docker" group).
+
 Run with:  python telegram_bot/bot.py   (from the repo root)
 """
+import asyncio
 import logging
 import os
 import re
@@ -9,7 +14,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 # Read the variables defined in the .env file next to this one.
 load_dotenv(Path(__file__).parent / ".env")
@@ -34,6 +39,10 @@ ALLOWED_EXTENSIONS = {
 }
 
 CLOUD_API_MAX_BYTES = 20 * 1024 * 1024
+
+# The container where paperScraper's daily check runs (docker-compose.yml).
+PAPERSCRAPER_CONTAINER = os.environ.get("PAPERSCRAPER_CONTAINER", "paperscraper_daily")
+REVIEW_BUTTON = re.compile(r"^rv:(yes|no):([0-9a-f]{6,32})$")
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -132,6 +141,47 @@ async def save_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await status.edit_text(f"Guardado: {target.name}")
 
 
+async def run_in_paperscraper(*arguments: str, wait: bool = True) -> tuple[bool, str]:
+    """Run `python reviews.py ...` in paperScraper's container; (it worked, what it printed)."""
+    command = ["docker", "exec", "-w", "/app", *([] if wait else ["-d"]), PAPERSCRAPER_CONTAINER,
+               "python", "reviews.py", *arguments]
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        output, _ = await asyncio.wait_for(process.communicate(), timeout=120)
+    except (OSError, asyncio.TimeoutError) as error:
+        return False, f"no he podido hablar con paperScraper ({type(error).__name__})"
+    text = output.decode("utf-8", "replace").strip()
+    if process.returncode != 0:
+        log.warning("%s failed: %s", " ".join(command), text)
+        return False, text.splitlines()[-1] if text else f"paperScraper ha fallado (código {process.returncode})"
+    return True, text.splitlines()[-1] if text else ""
+
+
+async def review_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """A button of a question about a doubtful work: download it or forget it."""
+    query = update.callback_query
+    if query is None:
+        return
+    if not is_allowed(update):
+        await query.answer("No autorizado")
+        return
+    match = REVIEW_BUTTON.match(query.data or "")
+    if match is None:
+        await query.answer()
+        return
+    choice, review_id = match.groups()
+    await query.answer("Descargando…" if choice == "yes" else "Descartando…")
+    worked, answer = await run_in_paperscraper(choice, review_id)
+    text = (query.message.text if query.message else "") + "\n\n" + ("→ " if worked else "⚠️ ") + answer
+    # Without the buttons: it is answered.
+    await query.edit_message_text(text, disable_web_page_preview=True,
+                                  reply_markup=None if worked else query.message.reply_markup)
+    if worked and choice == "yes":
+        # Look for the file now, in the background; a message comes when it is downloaded (or not).
+        await run_in_paperscraper("download", wait=False)
+
+
 def main() -> None:
     if not ALLOWED_USER_IDS:
         log.warning("TELEGRAM_ALLOWED_USER_IDS is empty: the bot will reject everyone. "
@@ -154,6 +204,7 @@ def main() -> None:
     app = builder.build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(review_answer, pattern=r"^rv:"))
     app.add_handler(MessageHandler(filters.Document.ALL, save_document))
     app.add_handler(MessageHandler(
         filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.VOICE

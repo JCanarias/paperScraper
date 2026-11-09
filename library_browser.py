@@ -170,7 +170,9 @@ def delete_files(files: list[Path], folder: Path, library: Path, papers_file: Pa
         if paper:
             paper.downloaded = False
             if forget:
+                # "rejected" also survives a new search of the author (main.keep_earlier_wanted).
                 paper.wanted = False
+                paper.review = "rejected"
     if papers_file and in_list:
         update_papers(papers_file, papers)
     print(f"✓ Borrados {deleted} archivos.")

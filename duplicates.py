@@ -115,6 +115,11 @@ def combine(best: Paper, other: Paper) -> None:
     best.wanted = best.wanted or other.wanted
     best.in_calibre = best.in_calibre or other.in_calibre
     best.sent_to_calibre = best.sent_to_calibre or other.sent_to_calibre
+    # Where each copy came from (OpenAlex records have no source): a doubtful source backed by
+    # a reliable one is no longer doubtful (reviews.py).
+    for place in (other.source or "OpenAlex", *other.also_found_in):
+        if place != (best.source or "OpenAlex") and place not in best.also_found_in:
+            best.also_found_in.append(place)
 
 
 def shared_surname(authors: list[str], other_authors: list[str]) -> bool:

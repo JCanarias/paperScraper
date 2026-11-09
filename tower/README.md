@@ -102,6 +102,31 @@ Para cada autor seguido:
    salvo que aparezca un enlace nuevo para ella. "Reintentar las obras pendientes", en el menú, las prueba todas;
 3. sube a Calibre cada obra que descarga y te manda un mensaje por Telegram por cada una.
 
+### Obras dudosas (Internet Archive y Google Books)
+
+En esas dos el autor lo pone quien sube o publica el libro, y a veces está mal (una "History of Magic"
+de Einstein). Una obra que solo está ahí no se descarga sin preguntarte; si también está en OpenAlex o en
+una biblioteca fiable, sí.
+
+- **Al buscar un autor en el menú**, te sale la lista de las dudosas para marcar las suyas.
+- **La revisión diaria** te pregunta por Telegram ("¿Es de este autor?", con botones Descargar / Descartar),
+  hasta 20 al día; las demás, los días siguientes. Al pulsar Descargar la busca en ese momento y te avisa.
+- **En el menú**, "Revisar obras dudosas" enseña todas las que esperan respuesta.
+
+Lo descartado no se vuelve a descargar, tampoco al buscar otra vez al autor. Lo mismo vale para lo que borres
+en "Ver y borrar archivos" diciendo que no vuelva.
+
+Los botones los atiende el bot de `telegram_bot/` (el servicio `telegram-bot`, fuera de Docker): pasa tu
+respuesta al contenedor `paperscraper_daily` con `docker exec`. Por eso el usuario del bot tiene que poder usar
+docker (estar en el grupo `docker`), y tras actualizar hay que reiniciarlo: `sudo systemctl restart telegram-bot`.
+
+### Presupuesto de OpenAlex
+
+Cada clave de OpenAlex tiene un presupuesto diario (1 $ la gratuita; se renueva a medianoche UTC). Una búsqueda
+por texto cuesta 0,001 $, una página de una lista 0,0001 $. La revisión diaria deja sin gastar 0,30 $ para que
+puedas usar el menú; si se acaba, el menú lo dice y a qué hora se renueva. Las obras de PhilArchive se buscan en
+OpenAlex una vez cada 90 días, no cada día.
+
 En las listas buscadas antes de esto solo está guardado el perfil principal de OpenAlex. Si un autor
 tenía varios perfiles ("L. Flamarique-Zaratiegui"...), búscalo otra vez por autor y elígelos todos: la marca de
 seguirlo se conserva.
