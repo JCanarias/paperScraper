@@ -5,6 +5,7 @@ from pathlib import Path
 import questionary
 import requests
 
+import browser_session
 from bibliography import find_works, read_references
 from calibre_library import CalibreLibrary, identifier_keys, title_keys
 from downloader import add_metadata, download_paper, downloaded_file, is_downloaded, tag_repeated_filenames
@@ -63,19 +64,15 @@ WIKISOURCE = WikisourceSource()
 # DOAB, Dialnet and PhilArchive are searched in local copies of their catalogues (update_indexes.py).
 BOOK_SOURCES: list[BookSource] = [
     INTERNET_ARCHIVE, GutenbergSource(), WIKISOURCE, DoabSource(), DialnetSource(), PhilArchiveSource(),
-    # sources/navarra.py (Universidad de Navarra) is left out: it asked OpenAlex for every author with
-    # the same name and all their works (thousands of requests for Kant), to give works OpenAlex already gives.
-    CervantesSource(), BNESource(),
-    GoogleBooksSource(), HathiTrustSource(), GallicaSource(),
+    # Cervantes, the BNE, HathiTrust and Gallica go through a browser (browser_session.py).
+    CervantesSource(), BNESource(), HathiTrustSource(), GallicaSource(),
 ]
-# Optional sources requiring API keys
-europeana = EuropeanaSource()
-if europeana.available:
-    BOOK_SOURCES.append(europeana)
+# These need a free key in .env (EUROPEANA_API_KEY, GOOGLE_BOOKS_API_KEY).
+BOOK_SOURCES.extend(source for source in (EuropeanaSource(), GoogleBooksSource()) if source.available)
 # Libraries that didn't answer in this run; they are not asked again until the program restarts.
 UNREACHABLE_SOURCES: set[str] = set()
 # Catalogues kept in the local index, and how many of their works are compared with each pending one.
-INDEXED_SOURCE_TYPES = (DoabSource, DialnetSource, PhilArchiveSource)
+INDEXED_SOURCE_TYPES = (DoabSource, DialnetSource, PhilArchiveSource, BNESource)
 MAX_CATALOGUE_CANDIDATES = 5
 # The user's Calibre library, when .env has its address; set in main().
 calibre: CalibreLibrary | None = None
@@ -278,6 +275,7 @@ def search_folder(base_folder: Path, words: str) -> Path:
 
 
 def quit_finder_drivers() -> None:
+    browser_session.quit_browser()
     for finder in PDF_FINDERS:
         if hasattr(finder, 'driver') and finder.driver:
             try:

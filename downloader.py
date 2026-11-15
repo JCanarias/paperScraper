@@ -6,6 +6,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 import truststore
 
+import browser_session
 from metadata import write_metadata
 from models import Paper
 
@@ -31,6 +32,9 @@ HEADERS = {"User-Agent": "Mozilla/5.0"}
 # answers with a "you're not a bot?" page instead of the book.
 HONEST_HEADERS = {"User-Agent": "paperScraper/1.0 (https://github.com/JCanarias/paperScraper)"}
 HONEST_HOSTS = ("ws-export.wmcloud.org", "wikisource.org")
+# Their works are only downloaded by hand: Gallica and the BNE block the PDFs to programs, and
+# HathiTrust's and Google's terms forbid downloading with them. Their links are the pages opened for the user.
+MANUAL_ONLY_HOSTS = ("gallica.bnf.fr", "bnedigital.bne.es", "hathitrust.org", "books.google.com", "books.google.es")
 
 
 def headers_for(url: str) -> dict[str, str]:
@@ -46,6 +50,8 @@ def download_paper(paper: Paper, folder: Path, urls: list[str]) -> bool:
         return True
 
     for url in urls:
+        if (urlparse(url).hostname or "").endswith(MANUAL_ONLY_HOSTS):
+            continue
         try:
             download_file(url, paper, folder)
             return True
@@ -73,36 +79,48 @@ def is_downloaded(paper: Paper, folder: Path) -> bool:
 
 
 def download_file(url: str, paper: Paper, folder: Path) -> None:
-    response = requests.get(url, headers=headers_for(url), timeout=DOWNLOAD_TIMEOUT_SECONDS)
-    response.raise_for_status()
+    content, page, page_url = fetch(url)
 
     # Repositories and journals often link to the work's page instead of its file; that page
     # says where the file is in a "citation_pdf_url" tag (the one Google Scholar reads).
-    extension = file_extension(response.content)
+    extension = file_extension(content)
     if extension is None:
-        pdf_link = pdf_link_in_page(response)
+        pdf_link = pdf_link_in_html(page, page_url)
         if pdf_link and pdf_link != url:
-            response = requests.get(pdf_link, headers=headers_for(pdf_link), timeout=DOWNLOAD_TIMEOUT_SECONDS)
-            response.raise_for_status()
-            extension = file_extension(response.content)
+            content, _, _ = fetch(pdf_link)
+            extension = file_extension(content)
 
     # Some links return a web page (a login, a captcha...) instead of the file.
     if extension is None:
         raise ValueError("el enlace no devuelve un PDF ni un EPUB")
 
+    save_file(content, extension, paper, folder)
+
+
+def fetch(url: str) -> tuple[bytes, str, str]:
+    """The answer at the address: its bytes, and its text when it is a web page, and the final address."""
+    # Some websites only let a real browser in (a Cloudflare check): those go through one (browser_session.py).
+    if browser_session.needs_browser(url):
+        content, page = browser_session.download(url)
+        return content or b"", page, url
+    response = requests.get(url, headers=headers_for(url), timeout=DOWNLOAD_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    page = response.text if "html" in response.headers.get("content-type", "") else ""
+    return response.content, page, response.url
+
+
+def save_file(content: bytes, extension: str, paper: Paper, folder: Path) -> None:
     file_path = folder / build_filename(paper, extension)
-    file_path.write_bytes(response.content)
+    file_path.write_bytes(content)
     add_metadata(file_path, paper)
 
 
-def pdf_link_in_page(response: requests.Response) -> str | None:
-    if "html" not in response.headers.get("content-type", ""):
-        return None
-    for tag in re.findall(r"<meta[^>]+>", response.text[:PAGE_HEAD_LENGTH], re.I):
+def pdf_link_in_html(page: str, page_url: str) -> str | None:
+    for tag in re.findall(r"<meta[^>]+>", page[:PAGE_HEAD_LENGTH], re.I):
         if re.search(r'name=["\'](?:citation_pdf_url|bepress_citation_pdf_url|eprints\.document_url)["\']', tag, re.I):
             link = re.search(r'content=["\']([^"\']+)["\']', tag, re.I)
             if link:
-                return urljoin(response.url, html.unescape(link.group(1)))
+                return urljoin(page_url, html.unescape(link.group(1)))
     return None
 
 

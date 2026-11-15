@@ -7,11 +7,12 @@ and the next run goes on where it stopped.
 """
 import argparse
 
+from sources.bne import BNESource
 from sources.dialnet import DialnetSource
 from sources.doab import DoabSource
 from sources.philarchive import PhilArchiveSource
 
-INDEXED_SOURCES = {"dialnet": DialnetSource, "philarchive": PhilArchiveSource, "doab": DoabSource}
+INDEXED_SOURCES = {"dialnet": DialnetSource, "philarchive": PhilArchiveSource, "doab": DoabSource, "bne": BNESource}
 
 
 def update_indexes(names: list[str], max_minutes: float | None = None) -> None:

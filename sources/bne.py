@@ -1,175 +1,97 @@
-"""Spanish books from Biblioteca Digital Hispánica (BNE).
+"""Public domain books of the Biblioteca Nacional de España (BNE Digital, formerly Biblioteca Digital Hispánica).
 
-The BNE publishes a public catalogue (CC BY 4.0) at datosabiertos.bne.es with 1,930 works
-in open domain or freely distributed. The catalogue includes author, title, date, and a
-link to the BNE platform.
-
-PDFs are not directly downloadable via API (Cloudflare protection). This source:
-1. Searches the public catalogue
-2. Attempts to find copies in Internet Archive
-3. Falls back to browser-based download links
-
-Data source: https://datosabiertos.bne.es/catalogo
+The BNE publishes the list of its digitised works in the public domain as open data (datosabiertos.bne.es,
+about 100,000 books): a ZIP of CSV files with author, title, date and the link to each work. We download
+it once a week (through the browser: bne.es is behind Cloudflare's check), keep the books in the local
+index and search them here.
+The files are downloaded by hand ("Descargar a mano las pendientes"): when the program asked BNE Digital
+for PDFs, its security system blocked the access ("Página de bloqueo"), so it isn't asked again.
 """
 import csv
 import io
+import re
 import time
-from typing import Optional
-from urllib.parse import urlencode
+import zipfile
+from datetime import datetime, timezone
 
-import requests
-
+import browser_session
+from languages import language_code
+from local_index import LocalIndex, record_to_paper
 from models import Paper
 from sources.base import BookSource
-from sources.internet_archive import InternetArchiveSource
-from sources.names import name_words, readable_name, same_author
+from sources.names import readable_name
 
-# BNE public data CSV URL
-# Note: The direct download link changes periodically. Fallback to search API.
-# Latest catalogue: https://datosabiertos.bne.es/dataset/catalogo-bne
-# This source requires periodic URL updates or switching to BNE's API.
-BNE_CATALOGUE_URL = "https://datosabiertos.bne.es/catalogo/download/bne-obras-publicas.csv"
-BNE_RECORD_URL = "https://bndigital.bne.es/details/"
-TIMEOUT_SECONDS = 30
-RATE_LIMIT_DELAY = 1.0  # Respectful delay
-
-_bne_cache: Optional[dict] = None
-_cache_timestamp: float = 0
+CATALOGUE_URL = "https://www.bne.es/media/datosgob/bdh/dominiopublico/dominiopublico_csv-utf8.zip"
+CARD_URL = "https://bnedigital.bne.es/bd/card?oid={id}&site=bdh"
+DAYS_BETWEEN_UPDATES = 7
+# The list also has engravings, maps, sheet music, manuscripts and recordings.
+BOOK_TYPE = "Libro"
+# The people of a work come as "Surname, Name , dates -role //"; translators, editors... have a role.
+ROLE = re.compile(r"\s-\s*[a-záéíóúñ. ]+$", re.I)
 
 
 class BNESource(BookSource):
-    """Search for Spanish public domain books in Biblioteca Digital Hispánica."""
 
     name = "BNE"
 
     def __init__(self):
-        self.internet_archive = InternetArchiveSource()
+        self.index = LocalIndex(self.name)
 
     def search_books_by_author(self, author_name: str, limit: int) -> list[Paper]:
-        """Search BNE catalogue for books by author."""
-        catalogue = self._load_catalogue()
-        if not catalogue:
-            return []
-
-        words = name_words(author_name)
-        if not words:
-            return []
-
-        results = []
-        for row in catalogue:
-            try:
-                if self._author_matches(row.get("Autor"), author_name, words):
-                    paper = self._row_to_paper(row)
-                    if paper:
-                        results.append(paper)
-                        if len(results) >= limit:
-                            break
-            except Exception:
-                continue
-
-        return results
+        self._update_if_old()
+        return [record_to_paper(record, self.name, "bne") for record in self.index.search_by_author(author_name, limit)]
 
     def search_books_by_title(self, words: str, limit: int) -> list[Paper]:
-        """Search BNE catalogue for books by title."""
-        catalogue = self._load_catalogue()
-        if not catalogue:
-            return []
+        self._update_if_old()
+        return [record_to_paper(record, self.name, "bne") for record in self.index.search_by_title(words, limit)]
 
-        results = []
-        for row in catalogue:
+    def update_index(self, max_minutes: float | None = None) -> bool:
+        print("  Descargando la lista de obras en dominio público de la BNE...")
+        content, _ = browser_session.download(CATALOGUE_URL)
+        if not content or not content.startswith(b"PK"):
+            raise ValueError("la BNE no ha dado su lista de obras")
+        records = []
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            for name in archive.namelist():
+                text = archive.read(name).decode("utf-8-sig", "replace")
+                records.extend(record for row in csv.DictReader(io.StringIO(text), delimiter=";")
+                               if (record := parse_row(row)))
+        # The list is the whole collection, so it replaces the old copy.
+        self.index.delete_all()
+        self.index.save(records)
+        self.index.set_state("last_complete", datetime.now(timezone.utc).isoformat())
+        return True
+
+    def _update_if_old(self) -> None:
+        last = self.index.get_state("last_complete")
+        age_days = (time.time() - datetime.fromisoformat(last).timestamp()) / 86400 if last else None
+        if age_days is None or age_days > DAYS_BETWEEN_UPDATES:
             try:
-                title = row.get("Título", "").lower()
-                if any(word.lower() in title for word in words.split()):
-                    paper = self._row_to_paper(row)
-                    if paper:
-                        results.append(paper)
-                        if len(results) >= limit:
-                            break
-            except Exception:
-                continue
+                self.update_index()
+            except Exception as error:
+                # With an old copy we can still search; without any, the BNE is just skipped.
+                print(f"  Aviso: no se ha podido actualizar la lista de la BNE ({error})")
 
-        return results
 
-    def _load_catalogue(self) -> Optional[list[dict]]:
-        """Load BNE public catalogue CSV."""
-        global _bne_cache, _cache_timestamp
-        import time as time_module
+def parse_row(row: dict) -> dict | None:
+    if row.get("Tipo de documento") != BOOK_TYPE or not row.get("Título"):
+        return None
+    work_ids = list(dict.fromkeys(re.findall(r"viewer\.vm\?id=(\d+)", row.get("version_digital") or "")))
+    if not work_ids:
+        return None
+    people = [person.strip() for person in (row.get("Autor Personas") or "").split("//") if person.strip()]
+    authors = [readable_name(person) for person in people if not ROLE.search(person)]
+    year = re.search(r"\d{4}", row.get("Fecha de publicación") or "")
+    isbn = re.sub(r"[^\dX]", "", (row.get("ISBN") or "").split("//")[0])
+    return {
+        "id": row["idBNE"],
+        "title": row["Título"].strip(),
+        "authors": authors,
+        "year": int(year.group()) if year else None,
+        "publisher": (row.get("Editorial") or "").split("//")[0].strip() or None,
+        "language": language_code(row.get("Lengua de publicación")),
+        "isbn": isbn or None,
+        "urls": [CARD_URL.format(id=work_id) for work_id in work_ids],
+    }
 
-        # Cache for 24 hours
-        if _bne_cache and (time_module.time() - _cache_timestamp) < 86400:
-            return _bne_cache
 
-        try:
-            time.sleep(RATE_LIMIT_DELAY)
-            response = requests.get(
-                BNE_CATALOGUE_URL,
-                timeout=TIMEOUT_SECONDS,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-                verify=False  # BNE has SSL issues sometimes
-            )
-            response.raise_for_status()
-        except requests.RequestException as e:
-            # BNE catalogue URLs change periodically - skip with graceful degradation
-            # See: https://datosabiertos.bne.es/dataset/catalogo-bne for current URL
-            return None
-
-        try:
-            # Parse CSV from response text
-            csv_reader = csv.DictReader(io.StringIO(response.text), delimiter=",")
-            _bne_cache = list(csv_reader)
-            _cache_timestamp = time_module.time()
-            print(f"Loaded BNE catalogue: {len(_bne_cache)} works")
-            return _bne_cache
-        except Exception as e:
-            print(f"Error parsing BNE CSV: {e}")
-            return None
-
-    @staticmethod
-    def _author_matches(csv_author: str, search_name: str, words: list[str]) -> bool:
-        """Check if CSV author matches search."""
-        if not csv_author:
-            return False
-        csv_author_lower = csv_author.lower()
-        return (
-            search_name.lower() in csv_author_lower
-            or any(word.lower() in csv_author_lower for word in words)
-        )
-
-    def _row_to_paper(self, row: dict) -> Optional[Paper]:
-        """Convert a BNE CSV row to Paper object."""
-        title = row.get("Título", "").strip()
-        if not title:
-            return None
-
-        author = row.get("Autor", "").strip()
-        year_str = row.get("Fecha_de_publicacion", "").strip()
-        bne_id = row.get("Identificador", "").strip()
-        bne_url = row.get("URL", "").strip()
-
-        year = None
-        if year_str:
-            try:
-                year = int(year_str.split("-")[0])
-            except (ValueError, IndexError):
-                pass
-
-        # Build download URL
-        pdf_urls = []
-        if bne_url:
-            pdf_urls.append(bne_url)
-
-        # Try to find in Internet Archive as well
-        if title:
-            ia_results = self.internet_archive.search_books_by_title(title, 1)
-            if ia_results and ia_results[0].pdf_urls:
-                pdf_urls.extend(ia_results[0].pdf_urls)
-
-        return Paper(
-            title=title,
-            authors=[readable_name(author)] if author else [],
-            year=year,
-            doi=None,
-            journal=None,
-            pdf_urls=pdf_urls[:1],  # Primary source is BNE
-            source="BNE",
-        )

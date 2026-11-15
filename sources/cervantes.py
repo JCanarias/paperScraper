@@ -1,135 +1,111 @@
-"""Books from Biblioteca Virtual Miguel de Cervantes (cervantes.es).
+"""Works of the Biblioteca Virtual Miguel de Cervantes (cervantesvirtual.com), with their PDF.
 
-The Biblioteca Virtual offers a public SPARQL endpoint (CC0) with metadata for thousands of works.
-PDFs are in /descargaPdf/ but protected by Cloudflare. This source searches via SPARQL and
-provides download links, but PDFs must be downloaded through the browser.
-
-SPARQL endpoint: https://www.cervantesvirtuaix.com/sparql
+Its catalogue is open as linked data (BVMC Labs, CC0), with a SPARQL endpoint that programs may use.
+In it, a person is the author of works; each work has editions ("manifestations") and these have
+copies ("items"); the PDF ones give the address of the file (/descargaPdf/...).
+The PDFs are behind Cloudflare's check, so the downloader gets them with the browser (browser_session.py).
 """
+import re
 import time
-from typing import Optional
-from urllib.parse import urlencode
 
 import requests
 
 from models import Paper
 from sources.base import BookSource
-from sources.names import name_words, readable_name
+from sources.names import readable_name, same_author
 
-# Cervantes SPARQL endpoint - Note: may be unreliable. Fallback to search if it fails.
-# Original attempts: www.cervantesvirtuaix.com (DNS fails), /api/sparql (404)
-SPARQL_ENDPOINT = "https://www.cervantesvirtual.com/servlet/SirveObras"
-CERVANTES_BASE_URL = "https://www.cervantesvirtual.com"
-TIMEOUT_SECONDS = 30
-RATE_LIMIT_DELAY = 1.0  # Respectful delay between requests
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+SPARQL_URL = "https://data.cervantesvirtual.com/bvmc-lod/repositories/data"
+HEADERS = {
+    "User-Agent": "paperScraper/1.0 (https://github.com/JCanarias/paperScraper)",
+    "Accept": "application/sparql-results+json",
+}
+TIMEOUT_SECONDS = 90
+SECONDS_BETWEEN_QUERIES = 2
+PREFIXES = """
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX rdac: <http://rdaregistry.info/Elements/c/>
+PREFIX rdaw: <http://rdaregistry.info/Elements/w/>
+PREFIX rdam: <http://rdaregistry.info/Elements/m/>
+PREFIX rdai: <http://rdaregistry.info/Elements/i/>
+PREFIX dc: <http://purl.org/dc/elements/1.1/>
+"""
+# The works with a PDF copy, and their title, date, language and authors.
+WORKS_WITH_PDF = """
+  ?work rdaw:titleOfTheWork ?title ; rdaw:manifestationOfWork ?edition .
+  ?edition rdam:exemplarOfManifestation ?copy .
+  ?copy rdai:identifierForTheItem ?file ; rdai:itemSpecificCarrierCharacteristic "pdf" .
+  OPTIONAL { ?edition rdam:dateOfPublication ?date }
+  OPTIONAL { ?edition dc:language ?language }
+  OPTIONAL { ?work rdaw:author ?author . ?author rdfs:label ?author_name }
+"""
 
 
 class CervantesSource(BookSource):
-    """Search for books in Biblioteca Virtual Miguel de Cervantes via SPARQL."""
 
     name = "Cervantes"
 
+    def __init__(self):
+        self.last_query = 0.0
+
     def search_books_by_author(self, author_name: str, limit: int) -> list[Paper]:
-        """Search for books by author using SPARQL."""
-        words = name_words(author_name)
-        if not words:
+        surname = sparql_text(author_name.split()[-1].lower()) if author_name.split() else ""
+        if not surname:
             return []
-
-        # Build SPARQL query for author search
-        # The endpoint uses <http://purl.org/ontology/bibo/author> for creators
-        query = f"""
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX bibo: <http://purl.org/ontology/bibo/>
-        PREFIX dc: <http://purl.org/dc/elements/1.1/>
-
-        SELECT ?uri ?title ?creator ?date
-        WHERE {{
-            ?uri dc:creator ?creator ;
-                 dc:title ?title ;
-                 dc:issued ?date .
-            FILTER (REGEX(?creator, "{author_name}", "i"))
-        }}
-        LIMIT {min(limit, 100)}
-        """
-
-        return self._sparql_search(query)
+        rows = self._query(f"""{PREFIXES}
+            SELECT ?work ?title ?date ?language ?file ?author_name WHERE {{
+              ?person a rdac:Person ; rdfs:label ?person_name .
+              FILTER(CONTAINS(LCASE(?person_name), "{surname}"))
+              ?work rdaw:author ?person .
+              {WORKS_WITH_PDF}
+            }} LIMIT {limit * 20}""")
+        papers = rows_to_papers(rows)
+        return [paper for paper in papers
+                if any(same_author(author_name, author) for author in paper.authors)][:limit]
 
     def search_books_by_title(self, words: str, limit: int) -> list[Paper]:
-        """Search for books by title using SPARQL."""
-        # Escape quotes for SPARQL
-        safe_words = words.replace('"', '\\"')
+        title_words = [sparql_text(word.lower()) for word in words.split() if len(word) > 2]
+        if not title_words:
+            return []
+        filters = " ".join(f'FILTER(CONTAINS(LCASE(?title), "{word}"))' for word in title_words)
+        rows = self._query(f"""{PREFIXES}
+            SELECT ?work ?title ?date ?language ?file ?author_name WHERE {{
+              {WORKS_WITH_PDF}
+              {filters}
+            }} LIMIT {limit * 5}""")
+        return rows_to_papers(rows)[:limit]
 
-        query = f"""
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX dc: <http://purl.org/dc/elements/1.1/>
+    def _query(self, query: str) -> list[dict]:
+        wait = self.last_query + SECONDS_BETWEEN_QUERIES - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        response = requests.get(SPARQL_URL, params={"query": query}, headers=HEADERS, timeout=TIMEOUT_SECONDS)
+        self.last_query = time.monotonic()
+        response.raise_for_status()
+        return [{name: value["value"] for name, value in row.items()}
+                for row in response.json()["results"]["bindings"]]
 
-        SELECT ?uri ?title ?creator ?date
-        WHERE {{
-            ?uri dc:title ?title ;
-                 dc:issued ?date .
-            OPTIONAL {{ ?uri dc:creator ?creator . }}
-            FILTER (REGEX(?title, "{safe_words}", "i"))
-        }}
-        LIMIT {min(limit, 100)}
-        """
 
-        return self._sparql_search(query)
+def sparql_text(text: str) -> str:
+    # The words go inside a quoted SPARQL string.
+    return re.sub(r'["\\\n\r]', "", text).strip()
 
-    def _sparql_search(self, query: str) -> list[Paper]:
-        """Execute SPARQL query and convert results to papers."""
-        # Cervantes SPARQL endpoint is unreliable. Skip for now.
-        # Their website doesn't expose reliable programmatic search.
-        return []
 
-        papers = []
-        for result in results:
-            try:
-                paper = self._result_to_paper(result)
-                if paper:
-                    papers.append(paper)
-            except Exception as e:
-                print(f"Error converting Cervantes result: {e}")
-                continue
-
-        return papers
-
-    def _result_to_paper(self, result: dict) -> Optional[Paper]:
-        """Convert a SPARQL result to a Paper object."""
-        uri_obj = result.get("uri", {})
-        title_obj = result.get("title", {})
-        creator_obj = result.get("creator", {})
-        date_obj = result.get("date", {})
-
-        uri = uri_obj.get("value") if isinstance(uri_obj, dict) else uri_obj
-        title = title_obj.get("value") if isinstance(title_obj, dict) else title_obj
-        creator = creator_obj.get("value") if isinstance(creator_obj, dict) else creator_obj
-        date_str = date_obj.get("value") if isinstance(date_obj, dict) else date_obj
-
-        if not title or not uri:
-            return None
-
-        # Extract year from date string (usually YYYY-MM-DD or YYYY)
-        year = None
-        if date_str:
-            try:
-                year = int(str(date_str).split("-")[0])
-            except (ValueError, IndexError):
-                pass
-
-        authors = [readable_name(creator)] if creator else []
-
-        # Build download URL - Cervantes uses /descargaPdf/ endpoint
-        # Note: This URL is behind Cloudflare, so automated download may fail
-        # User should use browser to download
-        pdf_url = f"{CERVANTES_BASE_URL}/descargaPdf/{uri.split('/')[-1]}"
-
-        return Paper(
-            title=title,
-            authors=authors,
-            year=year,
-            doi=None,
-            journal=None,
-            pdf_urls=[pdf_url],
-            source="Cervantes",
-        )
+def rows_to_papers(rows: list[dict]) -> list[Paper]:
+    # A work comes in one row per author and per PDF copy.
+    papers: dict[str, Paper] = {}
+    for row in rows:
+        work_id = row["work"].rsplit("/", 1)[-1]
+        paper = papers.get(work_id)
+        if paper is None:
+            year = re.search(r"(\d{4})$", row.get("date", ""))
+            language = row.get("language", "").rsplit("/", 1)[-1] or None
+            paper = papers[work_id] = Paper(
+                title=row["title"].strip(), year=int(year.group(1)) if year else None, doi=None,
+                pdf_urls=[], language=language, source="Cervantes", identifiers={"bvmc": work_id},
+            )
+        if row["file"] not in paper.pdf_urls:
+            paper.pdf_urls.append(row["file"])
+        author = readable_name(row["author_name"]) if row.get("author_name") else None
+        if author and author not in paper.authors:
+            paper.authors.append(author)
+    return list(papers.values())

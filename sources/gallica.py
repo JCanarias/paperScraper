@@ -1,154 +1,73 @@
-"""Books from Gallica - Biblioteca Digital de Francia.
+"""Public domain books of Gallica, the digital library of the Bibliothèque nationale de France.
 
-Gallica is the French National Library's digital collection. It offers:
-- SRU search API for bibliographic data
-- Millions of digitized books, maps, manuscripts
-
-Downloads are behind Cloudflare, but metadata is freely available.
-This source searches via SRU and provides browser links.
-
-SRU Documentation: https://gallica.bnf.fr/services/Engine.html
+Its catalogue can be searched with SRU, but every request to gallica.bnf.fr goes through
+Cloudflare's check, so the search runs in the browser (browser_session.py).
+Gallica refuses to make PDFs for programs (Cloudflare blocks them outright, it isn't a check to
+pass), so its works are only found here and downloaded by hand ("Descargar a mano las pendientes").
 """
-import time
-from typing import Optional
-from urllib.parse import urlencode, quote
-import xml.etree.ElementTree as ET
+import html
+import re
+from urllib.parse import urlencode
 
-import requests
-
+import browser_session
+from languages import language_code
 from models import Paper
 from sources.base import BookSource
-from sources.names import readable_name
+from sources.names import readable_name, same_author
 
-GALLICA_SRU_URL = "https://gallica.bnf.fr/SRU"
-GALLICA_BASE_URL = "https://gallica.bnf.fr"
-TIMEOUT_SECONDS = 30
-RATE_LIMIT_DELAY = 1.0  # Respectful delay
+SRU_URL = "https://gallica.bnf.fr/SRU"
+MAX_RECORDS = 50
+# Printed books; Gallica also has manuscripts, maps, images, sound recordings and periodicals.
+BOOK_TYPE = "monographie imprimée"
 
 
 class GallicaSource(BookSource):
-    """Search Gallica (French National Library) via SRU protocol."""
 
     name = "Gallica"
 
     def search_books_by_author(self, author_name: str, limit: int) -> list[Paper]:
-        """Search Gallica by author."""
-        # CQL: Common Query Language for SRU
-        query = f'dc.creator any "{author_name}"'
-        return self._search(query, limit)
+        surname = author_name.split()[-1] if author_name.split() else ""
+        if not surname:
+            return []
+        papers = self._search(f'dc.creator all "{clean(surname)}"')
+        return [paper for paper in papers
+                if any(same_author(author_name, author) for author in paper.authors)][:limit]
 
     def search_books_by_title(self, words: str, limit: int) -> list[Paper]:
-        """Search Gallica by title."""
-        query = f'dc.title any "{words}"'
-        return self._search(query, limit)
+        return self._search(f'dc.title all "{clean(words)}"')[:limit]
 
-    def _search(self, query: str, limit: int) -> list[Paper]:
-        """Execute SRU search."""
-        try:
-            time.sleep(RATE_LIMIT_DELAY)
-            response = requests.get(
-                GALLICA_SRU_URL,
-                params={
-                    "operation": "searchRetrieve",
-                    "version": "1.2",
-                    "query": query,
-                    "maximumRecords": min(limit, 50),
-                    "recordSchema": "oai_dc",
-                    "startRecord": 1,
-                },
-                timeout=TIMEOUT_SECONDS,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-            )
-            response.raise_for_status()
-        except requests.HTTPError as e:
-            if e.response.status_code == 403:
-                # Gallica blocks some programmatic access
-                # Workaround: Browse gallica.bnf.fr directly for public domain works
-                pass
-            else:
-                pass
-            return []
-        except requests.RequestException:
-            # Network errors - skip silently
-            return []
+    def _search(self, query: str) -> list[Paper]:
+        address = SRU_URL + "?" + urlencode({
+            "operation": "searchRetrieve", "version": "1.2", "maximumRecords": MAX_RECORDS,
+            "query": f'{query} and dc.type all "monographie"',
+        })
+        answer = browser_session.get_page(address)
+        records = re.findall(r"<oai_dc:dc[^>]*>(.*?)</oai_dc:dc>", answer, re.S)
+        return [paper for record in records if (paper := record_to_paper(record))]
 
-        papers = []
-        try:
-            root = ET.fromstring(response.content)
 
-            # SRU namespace
-            ns = {
-                "srw": "http://www.loc.gov/zing/srw/",
-                "oai_dc": "http://www.openarchives.org/OAI/2.0/oai_dc/",
-                "dc": "http://purl.org/dc/elements/1.1/",
-            }
+def clean(text: str) -> str:
+    return re.sub(r'["\\]', " ", text).strip()
 
-            records = root.findall(".//srw:record", ns)
-            for record in records:
-                try:
-                    paper = self._record_to_paper(record, ns)
-                    if paper:
-                        papers.append(paper)
-                        if len(papers) >= limit:
-                            break
-                except Exception:
-                    continue
-        except ET.ParseError as e:
-            print(f"Error parsing Gallica XML: {e}")
 
-        return papers
+def values(record: str, tag: str) -> list[str]:
+    return [html.unescape(value).strip() for value in re.findall(rf"<dc:{tag}>(.*?)</dc:{tag}>", record, re.S)]
 
-    def _record_to_paper(self, record: ET.Element, ns: dict) -> Optional[Paper]:
-        """Convert SRU record to Paper."""
-        # Extract Dublin Core metadata
-        data = record.find(".//oai_dc:dc", ns)
-        if data is None:
-            return None
 
-        title_elem = data.find("dc:title", ns)
-        title = title_elem.text if title_elem is not None and title_elem.text else None
-        if not title:
-            return None
-
-        # Extract creators/authors
-        authors = []
-        for creator in data.findall("dc:creator", ns):
-            if creator.text:
-                authors.append(readable_name(creator.text))
-
-        # Extract date
-        year = None
-        for date_elem in data.findall("dc:date", ns):
-            if date_elem.text:
-                try:
-                    year = int(str(date_elem.text).split("-")[0])
-                    break
-                except (ValueError, IndexError):
-                    pass
-
-        # Extract identifier (typically Gallica ARK or URL)
-        identifier = None
-        for ident in data.findall("dc:identifier", ns):
-            if ident.text:
-                identifier = ident.text
-                break
-
-        # Build Gallica URL
-        pdf_urls = []
-        if identifier:
-            # Try to extract ARK or build URL
-            if "gallica.bnf.fr" in identifier:
-                pdf_urls.append(identifier)
-            else:
-                # Assume it's an ARK identifier
-                pdf_urls.append(f"{GALLICA_BASE_URL}/ark:/{identifier}")
-
-        return Paper(
-            title=title,
-            authors=authors,
-            year=year,
-            doi=None,
-            journal=data.find("dc:publisher", ns).text if data.find("dc:publisher", ns) is not None else None,
-            pdf_urls=pdf_urls,
-            source="Gallica",
-        )
+def record_to_paper(record: str) -> Paper | None:
+    if "domaine public" not in values(record, "rights") or BOOK_TYPE not in values(record, "type"):
+        return None
+    address = next((value for value in values(record, "identifier") if "/ark:/" in value), None)
+    titles = values(record, "title")
+    if not address or not titles:
+        return None
+    # "Unamuno, Miguel de (1864-1936). Auteur du texte": the author's name, without dates and role.
+    authors = [readable_name(re.sub(r"\s*\(.*$", "", creator)) for creator in values(record, "creator")
+               if "auteur du texte" in creator.lower()]
+    year = next((int(match.group()) for value in values(record, "date") if (match := re.search(r"\d{4}", value))), None)
+    return Paper(
+        title=titles[0].split(" / ")[0].replace(" : ", ": "), year=year, doi=None, pdf_urls=[address],
+        authors=authors, language=language_code(next(iter(values(record, "language")), None)),
+        publisher=next(iter(values(record, "publisher")), None), source="Gallica",
+        identifiers={"gallica": address.rsplit("/", 1)[-1]},
+    )

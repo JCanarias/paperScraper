@@ -23,6 +23,7 @@ from sources.base import BookSource
 from sources.names import name_words, readable_name, same_author
 
 GOOGLE_BOOKS_API = "https://www.googleapis.com/books/v1/volumes"
+HEADERS = {"User-Agent": "paperScraper/1.0 (https://github.com/JCanarias/paperScraper)"}
 TIMEOUT_SECONDS = 10
 
 
@@ -32,8 +33,10 @@ class GoogleBooksSource(BookSource):
     name = "Google Books"
 
     def __init__(self):
-        # API key is optional - searches work without it but with lower rate limits
+        # Without a key every request shares one daily quota with everyone else in the world, which
+        # is always spent ("429 Quota exceeded"): with no key the source is not used (main.py).
         self.api_key = os.getenv("GOOGLE_BOOKS_API_KEY")
+        self.available = bool(self.api_key)
 
     def search_books_by_author(self, author_name: str, limit: int) -> list[Paper]:
         """Search Google Books by author."""
@@ -53,30 +56,10 @@ class GoogleBooksSource(BookSource):
             "maxResults": min(limit, 40),
             "printType": "books",
         }
-        if self.api_key:
-            params["key"] = self.api_key
-
-        try:
-            response = requests.get(
-                GOOGLE_BOOKS_API,
-                params=params,
-                timeout=TIMEOUT_SECONDS,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-            )
-            response.raise_for_status()
-        except requests.HTTPError as e:
-            if e.response.status_code == 429:
-                # Rate limited - Google Books free API has strict limits
-                # Recommended: Add GOOGLE_BOOKS_API_KEY to .env for higher limits
-                pass  # Gracefully skip
-            elif e.response.status_code == 403:
-                pass  # Access denied
-            else:
-                pass  # Other HTTP errors
-            return []
-        except requests.RequestException as e:
-            # Network errors - skip silently
-            return []
+        params["key"] = self.api_key
+        # Errors are not hidden: the search loop skips a library that fails for the rest of the run.
+        response = requests.get(GOOGLE_BOOKS_API, params=params, timeout=TIMEOUT_SECONDS, headers=HEADERS)
+        response.raise_for_status()
 
         try:
             data = response.json()

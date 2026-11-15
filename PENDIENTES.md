@@ -2,9 +2,12 @@
 
 Lo que falta para que este sea el buscador definitivo de textos digitales. Aquí está lo que **no** se ha podido automatizar del todo, y por qué.
 
-Estado a 2 de noviembre de 2026.
+Estado a 16 de noviembre de 2026.
 
 ## Ya automatizado (como referencia)
+
+Las webs que ponen una verificación de Cloudflare a los programas se abren con un Chrome real
+(`browser_session.py`), con una pausa de 5 segundos entre peticiones a una misma web.
 
 | Fuente | Cómo se usa | Qué da |
 |---|---|---|
@@ -16,47 +19,40 @@ Estado a 2 de noviembre de 2026.
 | DOAB / OAPEN | Catálogo diario descargable (CC0), copia local que se renueva cada semana | Unos 96.000 libros académicos en abierto; descarga desde la editorial o desde la copia de Internet Archive |
 | Dialnet | Cosecha OAI-PMH del área de Humanidades a una copia local | Artículos en español con texto completo en Dialnet |
 | PhilArchive | Cosecha OAI-PMH a una copia local, y para cada obra encontrada, la copia que conoce OpenAlex | Filosofía en abierto que también está publicada en otro sitio |
+| Biblioteca Virtual Miguel de Cervantes | SPARQL de BVMC Labs (`data.cervantesvirtual.com/bvmc-lod/repositories/data`); los PDF, con el navegador | Obras con PDF, buscadas por autor o título |
+| Revistas de la Universidad de Navarra | Los enlaces de OpenAlex, abiertos con el navegador, que hace clic en su casilla de Turnstile | Anuario Filosófico, Scripta Theologica... Pasa casi siempre en unos 30 s; si un día no, se reintenta otro |
+| Europeana | API con `EUROPEANA_API_KEY` (la clave va en el parámetro `wskey`) | Solo obras de dominio público o con licencia CC; el archivo, o la página de la obra en su biblioteca |
 | Calibre | API del servidor de contenido | Marca lo que ya tienes y sube lo nuevo |
 
-## Fuentes que no se pueden automatizar del todo
+## Fuentes que se buscan solas pero se descargan a mano
 
-### Biblioteca Virtual Miguel de Cervantes
-- **Qué hay:** un catálogo abierto (SPARQL, CC0) con enlaces a los PDFs. Su aviso legal permite guardar copias para uso personal.
-- **Por qué no:** los PDFs (`/descargaPdf/`) están detrás de la verificación de Cloudflare para cualquier programa.
-- **Qué se puede hacer:**
-  1. Buscar en su catálogo desde el programa y abrir el PDF en tu navegador. La descarga a mano ya existe en el programa; solo faltaría añadir la búsqueda.
-  2. Escribir a "El Bibliotecario" (cervantesvirtual.com/bibliotecario/, tel. 96 590 9481) o a BVMC.Labs para pedir que dejen pasar a esta herramienta de investigación.
+Sus obras aparecen en las búsquedas y quedan pendientes; "Descargar a mano las pendientes" abre su
+página en tu navegador.
 
-### Biblioteca Digital Hispánica (BNE)
-- **Qué hay:** una lista abierta (CC BY 4.0) de sus documentos de dominio público en datosabiertos.bne.es: 1.930 CSV, con autor, título, fecha y enlace.
-- **Por qué no:** el enlace antiguo de descarga (`bdh-rd.bne.es/pdf.raw`) devuelve una página anti-bots. La plataforma nueva (`bnedigital.bne.es`) no expone ningún enlace de descarga que un programa pueda usar.
-- **Qué se puede hacer:** escribir a bnelab@bne.es y preguntar si hay una forma de descargar los documentos de dominio público con un programa.
+### Biblioteca Digital Hispánica / BNE Digital
+- **Qué hay:** su lista de dominio público en datos abiertos (CC BY 4.0): un ZIP de 1.930 CSV con unos 100.000 libros. Se guarda en el índice local y se renueva cada semana (con el navegador: bne.es pasa por Cloudflare).
+- **Por qué a mano:** el 16 de noviembre de 2026, tras unas pocas pruebas de descarga de PDF desde `bnedigital.bne.es`, su sistema de seguridad bloqueó el acceso ("Página de bloqueo"). No se vuelve a intentar.
+- **Qué se puede hacer:** escribir a bnelab@bne.es y preguntar si hay una forma permitida de descargar los documentos de dominio público con un programa.
+
+### Gallica
+- **Qué hay:** su buscador SRU, abierto con el navegador. Se guardan los libros impresos en dominio público.
+- **Por qué a mano:** Cloudflare bloquea los PDF a los programas ("Attention Required"): es un bloqueo, no una verificación que se pueda pasar.
 
 ### PhilArchive (los PDFs propios)
 - **Ahora:** solo se descargan las obras que tienen otra copia en otro sitio (en una muestra, el 26 % tenía PDF fuera de PhilPapers y el 59 %, DOI).
 - **Por qué no el resto:** sus PDFs están detrás de Cloudflare. Sus condiciones prohíben descargarlos con programas "salvo permiso expreso por escrito".
 - **Qué se puede hacer:** escribirles (philpapers.org/help/contact.html). Pide permiso para descargar en abierto con esta herramienta personal, de poco volumen, o que la dejen pasar. Si lo dan, se añade la descarga directa.
 
-### Revistas de la Universidad de Navarra (Anuario Filosófico, Scripta Theologica…)
-- **Qué hay:** OpenAlex las marca bien como de acceso libre y da el enlace al PDF.
-- **Por qué no:** `revistas.unav.edu` pone la verificación de Cloudflare (Turnstile) delante de cada PDF, y su repositorio `dadun.unav.edu` rechaza a los programas (403). En la búsqueda de Lourdes Flamarique fueron 21 de los 31 enlaces que fallaron.
-- **Qué se puede hacer:**
-  1. "Descargar a mano las pendientes": abre cada obra en el navegador y recoge el archivo de Descargas.
-  2. Cuando termine la cosecha de Dialnet, "Reintentar las obras pendientes" por si Dialnet tiene copia de alguna.
-  3. Escribir al Servicio de Publicaciones de la Universidad de Navarra (rhereder@unav.es, el contacto que aparece en su página de verificación) y pedir que dejen pasar a esta herramienta.
-
 ### HathiTrust
-- **Por qué no:** su política de uso prohíbe expresamente automatizar descargas. Su API de datos se retiró en 2024.
-- **Qué se puede hacer:**
-  - Con cuenta de la Universidad Complutense (miembro de HathiTrust), descargar a mano libros enteros de dominio público desde el navegador.
-  - Desde España solo se ven completos los libros de antes de 1901 aproximadamente.
-  - Muchos de sus escaneos están en Internet Archive, que el programa ya usa.
+- **Qué hay:** su catálogo, abierto con el navegador (también su API pasa por Cloudflare). Se guardan los libros con un solo volumen en "Full view" desde España (aproximadamente, anteriores a 1901).
+- **Por qué a mano:** su política de uso prohíbe automatizar descargas.
+- **Qué se puede hacer:** con cuenta de la Universidad Complutense (miembro de HathiTrust), descargar a mano libros enteros. Muchos de sus escaneos están en Internet Archive, que el programa ya usa.
 
 ### Google Books
-- **Por qué no:** se puede buscar con una clave gratuita, pero las descargas de PDF están prohibidas para programas (robots.txt y sus condiciones) y llevan a un captcha.
-- **Qué se puede hacer:**
-  1. Conseguir una clave gratuita (console.cloud.google.com → API "Books API") y usarla solo para encontrar ediciones. Después se busca la misma copia en Internet Archive (identificadores que acaban en `goog`) o en Wikimedia Commons, que sí permiten descargar.
-  2. Abrir en tu navegador el enlace de Google para descargarlo tú.
+- **Falta:** una clave gratuita, `GOOGLE_BOOKS_API_KEY` en `.env` (console.cloud.google.com → API "Books API"). Sin clave, todas las peticiones comparten una cuota diaria mundial que siempre está gastada ("429 Quota exceeded"), así que sin clave la fuente no se usa.
+- **Por qué a mano:** sus condiciones y su robots.txt prohíben descargar con programas. Se guarda el enlace de Google, y sus obras pasan por la revisión de obras dudosas.
+
+## Fuentes que no se pueden automatizar del todo
 
 ### DOAB / OAPEN (lo que falta)
 - **Los libros de OAPEN posteriores a finales de 2024:** no están en la copia de Internet Archive. OAPEN tiene bloqueada nuestra IP desde las pruebas.
@@ -64,16 +60,6 @@ Estado a 2 de noviembre de 2026.
 - **Solo el primer autor:** el catálogo que usamos (KBART) solo trae el primer autor o editor de cada libro.
   - **Qué se puede hacer:** usar su CSV completo (`DOAB.csv`, más grande), que trae todos los autores.
 - **JSTOR y Project MUSE:** se excluyen porque sus condiciones prohíben descargar con programas.
-
-### Europeana
-- **Qué hay:** una API gratuita con clave, que lleva a bibliotecas españolas como la Biblioteca Virtual del Patrimonio Bibliográfico.
-- **Falta:**
-  1. Pedir la clave en europeana.eu.
-  2. Comprobar si las bibliotecas a las que lleva permiten descargar con programas.
-
-### Gallica
-- **Qué hay:** se puede buscar (API SRU).
-- **Por qué no:** las descargas están detrás de Cloudflare.
 
 ## Fuentes nuevas por revisar
 
