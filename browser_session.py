@@ -1,5 +1,6 @@
 """A real Chrome for the websites that show a "checking your browser" page (Cloudflare and the like)
-to every program: Cervantes, the BNE, Gallica, HathiTrust, the journals of the Universidad de Navarra.
+to every program: Cervantes, the BNE, Gallica, HathiTrust, the journals of the Universidad de Navarra;
+and any other website whose answer is that check (downloader.py: TDX, RACO...).
 
 A plain request gets that page instead of the answer. Copying the browser's cookies into `requests`
 isn't enough (those websites also tell `requests` apart by how it connects), and they block fetch()
@@ -29,6 +30,8 @@ DOWNLOAD_START_SECONDS = 8
 # A calm pause between two requests to the same website, like a person reading. The BNE blocked
 # the program when it asked for many PDFs in a row.
 SECONDS_BETWEEN_REQUESTS = 5.0
+# Cloudflare's page when the website refuses outright: waiting doesn't help.
+BLOCKED_TEXTS = ("you have been blocked", "has sido bloqueado")
 
 
 class BrowserError(Exception):
@@ -38,6 +41,8 @@ class BrowserError(Exception):
 _driver = None
 _download_folder: Path | None = None
 _last_request: dict[str, float] = {}
+# Websites that refused the browser in this run: not asked again until the program restarts.
+_blocked_hosts: set[str] = set()
 
 
 def needs_browser(url: str) -> bool:
@@ -102,6 +107,8 @@ def quit_browser() -> None:
 
 def _open(url: str):
     host = urlparse(url).hostname or ""
+    if host in _blocked_hosts:
+        raise BrowserError(f"{host} no deja entrar al navegador")
     wait = _last_request.get(host, 0) + SECONDS_BETWEEN_REQUESTS - time.monotonic()
     if wait > 0:
         time.sleep(wait)
@@ -111,6 +118,9 @@ def _open(url: str):
     last_click = started
     # When the check lets a file through, the browser saves it and keeps showing the check page.
     while _on_challenge(driver) and not any(_download_folder.iterdir()):
+        if _shows(driver, BLOCKED_TEXTS):
+            _blocked_hosts.add(host)
+            raise BrowserError(f"{host} no deja entrar al navegador")
         if time.monotonic() - started > PASS_TIMEOUT_SECONDS:
             raise BrowserError(f"{host} no deja pasar al navegador (comprobación de seguridad)")
         if time.monotonic() - last_click > SECONDS_BETWEEN_CLICKS:
@@ -122,11 +132,16 @@ def _open(url: str):
 
 
 def _on_challenge(driver) -> bool:
+    return _shows(driver, CHALLENGE_TEXTS)
+
+
+def _shows(driver, texts: tuple[str, ...]) -> bool:
+    """Whether the page's title or the start of its text has one of these texts."""
     try:
         shown = driver.title + " " + driver.execute_script("return document.body ? document.body.innerText.slice(0, 400) : ''")
     except Exception:
         return False
-    return any(text in shown.lower() for text in CHALLENGE_TEXTS)
+    return any(text in shown.lower() for text in texts)
 
 
 def _click_turnstile(driver) -> None:

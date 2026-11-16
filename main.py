@@ -32,6 +32,7 @@ from sources.internet_archive import InternetArchiveSource
 from sources.openalex import OpenAlexError, OpenAlexSource
 from reviews import ask_doubtful, doubtful, needs_review, review_in_menu, set_pending
 from sources.philarchive import PhilArchiveSource
+from sources.wikimedia_commons import WikimediaCommonsSource
 from sources.wikisource import WikisourceSource
 from update_indexes import INDEXED_SOURCES, update_indexes
 from library_browser import browse_library
@@ -64,7 +65,10 @@ INTERNET_ARCHIVE = InternetArchiveSource()
 WIKISOURCE = WikisourceSource()
 # DOAB, Dialnet and PhilArchive are searched in local copies of their catalogues (update_indexes.py).
 BOOK_SOURCES: list[BookSource] = [
-    INTERNET_ARCHIVE, GutenbergSource(), WIKISOURCE, DoabSource(), DialnetSource(), PhilArchiveSource(),
+    INTERNET_ARCHIVE, GutenbergSource(), WIKISOURCE,
+    # Scanned books in PDF (public domain), checked against the author each file names.
+    WikimediaCommonsSource(),
+    DoabSource(), DialnetSource(), PhilArchiveSource(),
     # Cervantes, the BNE, HathiTrust and Gallica go through a browser (browser_session.py).
     CervantesSource(), BNESource(), HathiTrustSource(), GallicaSource(),
 ]
@@ -674,6 +678,27 @@ def add_catalogue_copies(papers: list[Paper]) -> int:
     return improved
 
 
+def add_openalex_links(papers: list[Paper]) -> int:
+    """Add to each work the links OpenAlex knows today (new open copies, and the pages of the open copies,
+    which searches made before didn't keep). Return how many works got new links."""
+    by_id = {paper.identifiers["openalex"]: paper for paper in papers if paper.identifiers.get("openalex")}
+    if not by_id:
+        return 0
+    try:
+        current = OpenAlexSource().get_papers_by_openalex_ids(list(by_id))
+    except Exception as error:
+        print(f"Aviso: no se han podido actualizar los enlaces de OpenAlex: {error}")
+        return 0
+    improved = 0
+    for fresh in current:
+        paper = by_id.get(fresh.identifiers.get("openalex"))
+        new_urls = [url for url in fresh.pdf_urls if paper and url not in paper.pdf_urls]
+        if new_urls:
+            paper.pdf_urls.extend(new_urls)
+            improved += 1
+    return improved
+
+
 def same_main_work(paper: Paper, candidate: Paper) -> bool:
     if title_words(paper.title.split(":")[0]) != title_words((candidate.title or "").split(":")[0]):
         return False
@@ -699,6 +724,9 @@ def retry_pending() -> None:
         found = add_catalogue_copies(pending)
         if found:
             print(f"Encontradas en los catálogos locales: {found}")
+        refreshed = add_openalex_links(pending)
+        if refreshed:
+            print(f"Con enlaces nuevos en OpenAlex: {refreshed}")
         try:
             find_and_download_pdfs(pending, folder)
         except KeyboardInterrupt:

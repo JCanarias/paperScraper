@@ -16,10 +16,13 @@ Las webs que ponen una verificación de Cloudflare a los programas se abren con 
 | Internet Archive | API | Libros escaneados, incluidas muchas copias de Google Books |
 | Gutenberg | API Gutendex | Clásicos en EPUB |
 | Wikisource | API de MediaWiki y su exportador de EPUB | Clásicos en EPUB, primero en español |
+| Wikimedia Commons | API de MediaWiki (búsqueda de archivos PDF); cada archivo debe decir en su campo de autor que es suyo | Libros escaneados de dominio público en PDF (los DjVu, que son muchos, todavía no) |
 | DOAB / OAPEN | Catálogo diario descargable (CC0), copia local que se renueva cada semana | Unos 96.000 libros académicos en abierto; descarga desde la editorial o desde la copia de Internet Archive |
 | Dialnet | Cosecha OAI-PMH del área de Humanidades a una copia local | Artículos en español con texto completo en Dialnet |
 | PhilArchive | Cosecha OAI-PMH a una copia local, y para cada obra encontrada, la copia que conoce OpenAlex | Filosofía en abierto que también está publicada en otro sitio |
 | Biblioteca Virtual Miguel de Cervantes | SPARQL de BVMC Labs (`data.cervantesvirtual.com/bvmc-lod/repositories/data`); los PDF, con el navegador | Obras con PDF, buscadas por autor o título |
+| Páginas de las copias en abierto (OpenAlex) | Para cada copia en abierto sin enlace al PDF, su página, de la que se saca `citation_pdf_url`; "Reintentar las pendientes" pide a OpenAlex los enlaces de hoy de las pendientes | Revistas OJS (Complutenses, CSIC, RACO, revistas universitarias) y repositorios |
+| Webs con la comprobación de Cloudflare | Si una web responde con ella (o con su 403), se abre con el navegador; si bloquea del todo, no se le vuelve a preguntar en esa ejecución | TDX y RACO, entre otras, sin tener que apuntarlas |
 | Revistas de la Universidad de Navarra | Los enlaces de OpenAlex, abiertos con el navegador, que hace clic en su casilla de Turnstile | Anuario Filosófico, Scripta Theologica... Pasa casi siempre en unos 30 s; si un día no, se reintenta otro |
 | Europeana | API con `EUROPEANA_API_KEY` (la clave va en el parámetro `wskey`) | Solo obras de dominio público o con licencia CC; el archivo, o la página de la obra en su biblioteca |
 | Calibre | API del servidor de contenido | Marca lo que ya tienes y sube lo nuevo |

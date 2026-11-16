@@ -16,6 +16,8 @@ NOT_WORKS = "type:!paratext"
 # Sites whose terms forbid downloading their files with programs (PhilPapers allows it only
 # with written permission); their links are left out, and other copies are tried instead.
 NO_PROGRAM_DOWNLOADS = ("philpapers.org", "philarchive.org", "jstor.org", "muse.jhu.edu")
+# Pages of open copies that never lead to the file: directories of journals and catalogues.
+NOT_FILE_PAGES = ("doaj.org", "dialnet.unirioja.es", "europepmc.org/abstract", "pubmed.ncbi.nlm.nih.gov")
 # "https://arxiv.org/abs/1706.03762v5" -> "1706.03762"; old ids look like "math/0211159".
 ARXIV_LINK = re.compile(r"arxiv\.org/abs/(.+?)(?:v\d+)?/?(?:[?#]|$)", re.I)
 # OpenAlex accepts up to 100 values in one filter, but long URLs fail, so we stay lower.
@@ -138,6 +140,19 @@ class OpenAlexSource(Source):
             papers.extend(self._build_paper(result) for result in response.json()["results"])
         return papers
 
+    def get_papers_by_openalex_ids(self, ids: list[str]) -> list[Paper]:
+        """The works with these OpenAlex ids ("W3085302165"), as OpenAlex has them today."""
+        papers = []
+        for start in range(0, len(ids), MAX_DOIS_PER_REQUEST):
+            group = ids[start:start + MAX_DOIS_PER_REQUEST]
+            response = self._get(f"{OPENALEX_API_URL}/works", params={
+                "filter": "openalex:" + "|".join(group),
+                "per-page": MAX_DOIS_PER_REQUEST,
+            })
+            response.raise_for_status()
+            papers.extend(self._build_paper(result) for result in response.json()["results"])
+        return papers
+
     def _get(self, url: str, params: dict) -> requests.Response:
         """Ask OpenAlex; when it says "too many requests" (or fails for a moment), wait and ask again.
 
@@ -227,6 +242,13 @@ class OpenAlexSource(Source):
         for location in work["locations"]:
             url = location["pdf_url"]
             if url and url not in pdf_urls and not any(host in url for host in NO_PROGRAM_DOWNLOADS):
+                pdf_urls.append(url)
+        # Then the pages of the open copies: many journals (OJS) and repositories only give their page,
+        # which says where the file is (citation_pdf_url, read by the downloader).
+        for location in work["locations"]:
+            url = location.get("landing_page_url")
+            if location.get("is_oa") and url and url not in pdf_urls \
+                    and not any(host in url for host in (*NO_PROGRAM_DOWNLOADS, *NOT_FILE_PAGES)):
                 pdf_urls.append(url)
         return pdf_urls
 

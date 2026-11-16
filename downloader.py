@@ -31,7 +31,7 @@ HEADERS = {"User-Agent": "Mozilla/5.0"}
 # Wikimedia asks programs to say who they are; to a browser-like name its EPUB maker
 # answers with a "you're not a bot?" page instead of the book.
 HONEST_HEADERS = {"User-Agent": "paperScraper/1.0 (https://github.com/JCanarias/paperScraper)"}
-HONEST_HOSTS = ("ws-export.wmcloud.org", "wikisource.org")
+HONEST_HOSTS = ("ws-export.wmcloud.org", "wikisource.org", "wikimedia.org")
 # Their works are only downloaded by hand: Gallica and the BNE block the PDFs to programs, and
 # HathiTrust's and Google's terms forbid downloading with them. Their links are the pages opened for the user.
 MANUAL_ONLY_HOSTS = ("gallica.bnf.fr", "bnedigital.bne.es", "hathitrust.org", "books.google.com", "books.google.es")
@@ -104,9 +104,22 @@ def fetch(url: str) -> tuple[bytes, str, str]:
         content, page = browser_session.download(url)
         return content or b"", page, url
     response = requests.get(url, headers=headers_for(url), timeout=DOWNLOAD_TIMEOUT_SECONDS)
+    # The same check on a website not in the list, or reached through a redirect (doi.org,
+    # hdl.handle.net): the browser opens the address where the check was, only then.
+    if browser_session.needs_browser(response.url) or behind_cloudflare_check(response):
+        content, page = browser_session.download(response.url)
+        return content or b"", page, response.url
     response.raise_for_status()
     page = response.text if "html" in response.headers.get("content-type", "") else ""
     return response.content, page, response.url
+
+
+def behind_cloudflare_check(response: requests.Response) -> bool:
+    """Cloudflare's check page, or its "you have been blocked" one, which a real browser usually passes
+    (RACO, TDX: their robots.txt lets every program in)."""
+    if response.headers.get("cf-mitigated") == "challenge":
+        return True
+    return response.status_code == 403 and response.headers.get("server", "").lower() == "cloudflare"
 
 
 def save_file(content: bytes, extension: str, paper: Paper, folder: Path) -> None:

@@ -14,7 +14,7 @@ Las direcciones con (?) estaban cortadas en la lista original y están completad
 
 ## Lo primero
 
-1. **Abrir la página del artículo que da OpenAlex** (`landing_page_url` de las copias en abierto), no solo
+1. **Hecho (16 de noviembre).** **Abrir la página del artículo que da OpenAlex** (`landing_page_url` de las copias en abierto), no solo
    su enlace directo al PDF. El descargador ya sabe sacar el PDF de esas páginas (`citation_pdf_url`).
    Cubriría las revistas en OJS de esta lista (Complutenses, RACO, CSIC, Open Library of Humanities,
    Janeway, OpenEdition Journals, Heidelberg) sin fuentes nuevas ni gasto de OpenAlex.
@@ -44,7 +44,7 @@ Las direcciones con (?) estaban cortadas en la lista original y están completad
 | Digital Humanities Quarterly | digitalhumanities.org/dhq | No sirve: artículos en HTML |
 | Bryn Mawr Classical Review | bmcr.brynmawr.edu | No sirve: reseñas en HTML |
 | Revistas Científicas Complutenses | revistas.ucm.es | Prioridad, con el punto 1 (OJS, DOI, también en Dialnet) |
-| RACO | raco.cat | Prioridad, con el punto 1 (OJS, tiene OAI-PMH) |
+| RACO | raco.cat | Hecha con el punto 1; tiene Cloudflare y va con el navegador (el 16 de noviembre su servidor estaba caído) |
 | Revistas del CSIC | revistas.csic.es | Prioridad, con el punto 1 (OJS, DOI) |
 | Biblioteca Saavedra Fajardo | saavedrafajardo.org | No sirve: pequeña y en HTML |
 
@@ -132,7 +132,7 @@ Las direcciones con (?) estaban cortadas en la lista original y están completad
 
 | Fuente | Dirección | Valoración |
 |---|---|---|
-| TDX | tdx.cat | Prioridad, con la clave de CORE (punto 2); también tiene OAI-PMH |
+| TDX | tdx.cat | Hecha en parte: sus enlaces (los da OpenAlex) se abren con el navegador por Cloudflare. Con la clave de CORE se encontrarían más |
 | TESEO | educacion.gob.es/teseo | No sirve: solo la ficha de la tesis, sin archivo |
 | DART-Europe | dart-europe.org | Quizá: enlaza a repositorios que ya reúne CORE |
 | OATD | oatd.org | Quizá: igual que DART-Europe |
@@ -148,7 +148,7 @@ por sitio); el resto está sin comprobar. Se agrupan las que reciben la misma va
 
 ## Siguientes candidatas
 
-1. **Wikimedia Commons** (comprobada): `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=<autor> filetype:pdf&prop=imageinfo&iiprop=url|mime|size`.
+1. **Hecha (16 de noviembre), solo los PDF.** **Wikimedia Commons** (comprobada): `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=<autor> filetype:pdf&prop=imageinfo&iiprop=url|mime|size`.
    Libros escaneados en PDF y DjVu, descarga directa desde `upload.wikimedia.org`, sin Cloudflare. Con "Fichte" da
    PDF y DjVu de sus obras. Entraría como `BookSource` (búsqueda por autor y título), con el mismo User-Agent y
    ritmo que Wikisource. Calibre guarda DjVu, aunque su visor no lo abre.
@@ -254,7 +254,7 @@ por sitio); el resto está sin comprobar. Se agrupan las que reciben la misma va
 | Canadiana, BAnQ, Calisphere, Portal to Texas History, Digital Library of Georgia, Digital Commonwealth, DocSouth, dLOC, DLME | (ver lista) | Quizá: regionales; solo si se siguen autores de allí. Las de EE. UU. las reúne DPLA (primera lista) |
 | JSTOR Early Journal Content | archive.org/details/jstor_ejc | Ya cubierta: está en Internet Archive |
 | Mark Twain Project, Willa Cather Archive, Papers of Abraham Lincoln, SlaveVoyages, Lantern | (ver lista) | No sirve: ediciones en HTML o datos |
-| Wikimedia Commons | commons.wikimedia.org (API comprobada) | Prioridad: ver "Siguientes candidatas" |
+| Wikimedia Commons | commons.wikimedia.org (API comprobada) | Hecha (solo PDF; faltan los DjVu) |
 | Endangered Archives Programme | eap.bl.uk | No sirve: archivos en imagen |
 
 ## Asia, Oriente Próximo y África
