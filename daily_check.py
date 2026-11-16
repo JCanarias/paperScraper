@@ -7,14 +7,18 @@ For each of them, as a new search by author would do, but without asking anythin
 2. looks again for a file of every chosen work still without one (local catalogues and PDF finders);
    a work that keeps failing waits longer each time (1, 2, 4... up to 30 days), unless it gets new links;
 3. sends every new file to Calibre and a Telegram message for each one.
-At the end it asks about the doubtful works by Telegram, and downloads the ones accepted meanwhile.
+At the end it asks about the doubtful works by Telegram, downloads the ones accepted meanwhile,
+and sends a report by Telegram: what was found and downloaded, and the sources that failed.
 
 The tower runs it every day at 6:00 (the "daily" container, tower/scheduler.py). By hand:
     docker compose exec daily python daily_check.py
 """
 import datetime as dt
+import re
 import sys
+import time
 import traceback
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import main
@@ -33,6 +37,60 @@ from telegram_notify import send_message
 MAX_DAYS_BETWEEN_CHECKS = 30
 # What the daily check leaves of the OpenAlex key's daily budget (1 $ for a free key), for the menu.
 OPENALEX_BUDGET_LEFT_FOR_MENU_USD = 0.30
+# The lines of the check that tell about a problem (a source that fails, a catalogue not updated...).
+PROBLEM_LINE = re.compile(r"Aviso|ha fallado|no responde|✗ No se ha podido")
+MAX_PROBLEMS_IN_REPORT = 15
+
+
+@dataclass
+class AuthorResult:
+    name: str
+    new: int = 0
+    downloaded: int = 0
+    pending: int = 0
+    failed: bool = False
+
+
+@dataclass
+class Report:
+    """What the check did, for the message sent at its end."""
+    started: float = field(default_factory=time.monotonic)
+    authors: dict[str, AuthorResult] = field(default_factory=dict)
+    in_calibre: int = 0
+    asked: int = 0
+    # Each problem line, and how many times it appeared.
+    problems: dict[str, int] = field(default_factory=dict)
+
+    def author(self, folder: Path) -> AuthorResult:
+        # The folder is "Name (OpenAlex id)".
+        name = re.sub(r"\s*\([^)]*\)$", "", folder.name) or folder.name
+        return self.authors.setdefault(folder.name, AuthorResult(name))
+
+
+report = Report()
+
+
+class ProblemCollector:
+    """Shows everything on the screen (and so in the log) as before, and keeps the problem lines."""
+
+    def __init__(self, screen):
+        self.screen = screen
+        self.line = ""
+
+    def write(self, text: str) -> int:
+        self.screen.write(text)
+        self.line += text
+        *complete, self.line = self.line.split("\n")
+        for line in complete:
+            line = line.strip()
+            if PROBLEM_LINE.search(line):
+                # "Buscando libros en Gallica... ha fallado (...)" → "Gallica: ha fallado (...)"
+                line = re.sub(r"^Buscando libros en (.+?)\.\.\.\s*", r"\1: ", line).removeprefix("Aviso: ")
+                report.problems[line] = report.problems.get(line, 0) + 1
+        return len(text)
+
+    def __getattr__(self, name):
+        return getattr(self.screen, name)
 
 
 def followed_lists() -> list[Path]:
@@ -82,6 +140,8 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
             set_pending(paper)
     waiting = sum(paper.review == "pending" for paper in papers)
     print(f"Obras nuevas: {len(new)}" + (f"; dudosas por revisar: {waiting}" if waiting else ""))
+    result = report.author(folder)
+    result.new += len(new)
 
     pending = [paper for paper in papers
                if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
@@ -105,6 +165,8 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
         for paper in papers:
             paper.downloaded = is_downloaded(paper, folder)
         update_papers(papers_file, papers)
+        result.pending = sum(paper.wanted and not paper.in_calibre and not paper.downloaded
+                             and paper_language_allowed(paper) for paper in papers)
 
 
 def due_today(paper: Paper, today: dt.date) -> bool:
@@ -152,9 +214,12 @@ CALIBRE_STATES = {
 
 def on_download(paper: Paper, folder: Path) -> None:
     """Every downloaded work goes to Calibre, and the user gets a message."""
+    report.author(folder).downloaded += 1
     if main.calibre:
         try:
-            calibre_state = CALIBRE_STATES[main.send_to_calibre(paper, folder)]
+            state = main.send_to_calibre(paper, folder)
+            calibre_state = CALIBRE_STATES[state]
+            report.in_calibre += state in ("uploaded", "kept")
         except Exception as error:
             calibre_state = f"No se ha podido subir a Calibre: {error}"
     else:
@@ -172,7 +237,42 @@ def on_download(paper: Paper, folder: Path) -> None:
     send_message("\n".join(line for line in lines if line))
 
 
+def report_text() -> str:
+    minutes = round((time.monotonic() - report.started) / 60)
+    results = list(report.authors.values())
+    downloaded = sum(result.downloaded for result in results)
+    lines = [
+        f"📋 Revisión diaria terminada ({minutes // 60} h {minutes % 60} min)",
+        f"Autores revisados: {len(results)}",
+        f"📥 Descargadas: {downloaded}" + (f" (subidas a Calibre: {report.in_calibre})" if main.calibre else ""),
+        f"🆕 Obras nuevas: {sum(result.new for result in results)}",
+        f"⏳ Siguen sin archivo: {sum(result.pending for result in results)}",
+    ]
+    if report.asked:
+        lines.append(f"❓ Obras dudosas preguntadas: {report.asked}")
+    # Only the authors with something to tell; the rest stay as they were.
+    news = [result for result in results if result.new or result.downloaded or result.failed]
+    if news:
+        lines.append("")
+        for result in news:
+            if result.failed:
+                lines.append(f"• {result.name}: ha fallado (mira el log)")
+            else:
+                lines.append(f"• {result.name}: {result.new} nuevas, {result.downloaded} descargadas, "
+                             f"{result.pending} sin archivo")
+    if report.problems:
+        lines += ["", "⚠️ Problemas:"]
+        for problem, times in list(report.problems.items())[:MAX_PROBLEMS_IN_REPORT]:
+            lines.append(f"• {problem}" + (f" (×{times})" if times > 1 else ""))
+        if len(report.problems) > MAX_PROBLEMS_IN_REPORT:
+            lines.append(f"… y {len(report.problems) - MAX_PROBLEMS_IN_REPORT} más (mira el log)")
+    else:
+        lines += ["", "✅ Ninguna fuente ha dado problemas."]
+    return "\n".join(lines)
+
+
 def main_check() -> None:
+    sys.stdout = ProblemCollector(sys.stdout)
     lock = take_daily_lock()
     if lock is None:
         print("La revisión diaria ya está en marcha.")
@@ -194,6 +294,7 @@ def main_check() -> None:
             except Exception:
                 # One author that fails doesn't stop the others.
                 traceback.print_exc()
+                report.author(papers_file.parent).failed = True
         # The works accepted in Telegram (before or during the check) that are still without a file.
         for papers_file, review_ids in apply_decisions().items():
             accepted.setdefault(papers_file, set()).update(review_ids)
@@ -201,7 +302,9 @@ def main_check() -> None:
         asked = ask_by_telegram()
         if asked:
             print(f"\nPreguntadas por Telegram {asked} obras dudosas.")
+        report.asked = asked or 0
         print("\n✓ Revisión diaria terminada.")
+        send_message(report_text())
     except Exception as error:
         traceback.print_exc()
         send_message(f"⚠️ La revisión diaria de paperScraper ha fallado: {error}")
