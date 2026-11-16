@@ -3,6 +3,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from models import Author, Paper
+from sources.names import name_words
 
 PAPERS_FILENAME = "papers.json"
 
@@ -75,3 +76,8 @@ def set_follow(file_path: Path, follow: bool) -> None:
     content = load_content(file_path)
     content["follow"] = follow
     file_path.write_text(json.dumps(content, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def work_key(paper: Paper) -> str:
+    """What tells a work apart in its list, also after a new search: its DOI, or the words of its title."""
+    return (paper.doi or "").lower() or " ".join(name_words(paper.title or ""))

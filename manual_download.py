@@ -13,6 +13,7 @@ from urllib.parse import quote_plus
 
 import questionary
 
+import download_history
 from downloader import add_metadata, build_filename, file_extension
 from models import Paper
 
@@ -92,4 +93,5 @@ def file_away(downloaded: Path, paper: Paper, folder: Path) -> Path:
     file_path = folder / build_filename(paper, extension)
     shutil.move(downloaded, file_path)
     add_metadata(file_path, paper)
+    download_history.record(paper, folder, "a mano")
     return file_path

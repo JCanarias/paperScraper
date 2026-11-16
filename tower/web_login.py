@@ -1,4 +1,7 @@
-"""The door of the web terminal: a login page with a cookie, in front of ttyd.
+"""The door of the web panel and the web terminal: a login page with a cookie, in front of both.
+
+After the login the user lands on the panel (webapp/, at /p/<session>/); the terminal with the menu
+is at /s/<session>/.
 
 ttyd's own user and password (HTTP Basic) don't work on many phones: the browser sends them for the page
 but not for the terminal's live connection (WebSocket), so ttyd refuses it and the page stays at
@@ -17,8 +20,13 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
 
 from aiohttp import ClientSession, UnixConnector, WSMsgType, web
+
+# The panel uses the program's modules, and its paths (library/) are relative to the project's folder.
+PROJECT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT))
 
 log = logging.getLogger("web_login")
 COOKIE_NAME = "paperscraper_session"
@@ -63,6 +71,8 @@ class Door:
         self.secret = hashlib.sha256(f"paperscraper-web\0{user}\0{password}".encode()).digest()
         self.login_lock = asyncio.Lock()
         self.client: ClientSession | None = None
+        # Where the user lands after the login: "p" (the panel) or "s" (the terminal, if the panel can't start).
+        self.start = "p"
 
     # --- sessions ---
     # A session is "<expiry>.<signature>". It goes in a cookie and also in the address of the terminal
@@ -90,12 +100,12 @@ class Door:
 
     async def home(self, request: web.Request) -> web.Response:
         session = self.cookie_session(request)
-        raise web.HTTPFound(f"/s/{session}/" if session else "/login")
+        raise web.HTTPFound(f"/{self.start}/{session}/" if session else "/login")
 
     async def login_page(self, request: web.Request, error: str = "") -> web.Response:
         session = self.cookie_session(request)
         if not error and session:
-            raise web.HTTPFound(f"/s/{session}/")
+            raise web.HTTPFound(f"/{self.start}/{session}/")
         error_html = f'<p class="error">{html.escape(error)}</p>' if error else ""
         return web.Response(text=LOGIN_PAGE.format(error=error_html), content_type="text/html",
                             headers={"Cache-Control": "no-store"})
@@ -115,7 +125,7 @@ class Door:
                                              "teclado no haya puesto mayúscula o cambiado algún carácter.")
         log.info("Sesión iniciada desde %s (%s)", client_address(request), request.headers.get("User-Agent", "?"))
         session = self.new_session()
-        response = web.HTTPFound(f"/s/{session}/")
+        response = web.HTTPFound(f"/{self.start}/{session}/")
         response.set_cookie(COOKIE_NAME, session, max_age=SESSION_SECONDS, httponly=True,
                             samesite="Lax", secure=not is_local(request), path="/")
         response.headers["Cache-Control"] = "no-store"
@@ -126,10 +136,25 @@ class Door:
         response.del_cookie(COOKIE_NAME, path="/")
         raise response
 
+    # --- the panel: /p/<session>/... ---
+
+    def panel_check(self, handler):
+        """The panel's pages and data only with a valid session (it goes in the address, as the terminal's)."""
+        async def checked(request: web.Request) -> web.StreamResponse:
+            if not self.valid(request.match_info["session"]):
+                if "/api/" in request.path:
+                    raise web.HTTPUnauthorized()
+                raise web.HTTPFound("/login")
+            return await handler(request)
+        return checked
+
     # --- the terminal: /s/<session>/... goes to ttyd's /... ---
 
     async def without_slash(self, request: web.Request) -> web.Response:
         raise web.HTTPFound(f"/s/{request.match_info['session']}/")
+
+    async def without_slash_panel(self, request: web.Request) -> web.Response:
+        raise web.HTTPFound(f"/p/{request.match_info['session']}/")
 
     async def forward(self, request: web.Request) -> web.StreamResponse:
         websocket = request.headers.get("Upgrade", "").lower() == "websocket"
@@ -214,17 +239,30 @@ def main() -> None:
     if not user or not password:
         sys.exit("Faltan PAPERSCRAPER_WEB_USER y PAPERSCRAPER_WEB_PASSWORD en .env; la terminal web no arranca.")
     door = Door(user, password, os.environ.get("TTYD_SOCKET", "/tmp/ttyd.sock"))
-    app = web.Application(middlewares=[https_only])
+    os.chdir(PROJECT)
+    # If the panel can't start (an error in its code), the terminal still works, as before the panel.
+    try:
+        from webapp import panel
+    except Exception:
+        log.exception("El panel web no arranca; queda solo la terminal")
+        panel = None
+        door.start = "s"
+    middlewares = [https_only, panel.same_origin_only] if panel else [https_only]
+    app = web.Application(middlewares=middlewares,
+                          client_max_size=(panel.MAX_UPLOAD_BYTES if panel else 0) + 1024 * 1024)
     app.router.add_get("/", door.home)
     app.router.add_get("/login", door.login_page)
     app.router.add_post("/login", door.login)
     app.router.add_get("/logout", door.logout)
+    if panel:
+        app.router.add_get("/p/{session}", door.without_slash_panel)
+        panel.add_routes(app, "/p/{session}", door.panel_check)
     app.router.add_get("/s/{session}", door.without_slash)
     app.router.add_route("*", "/s/{session}/{rest:.*}", door.forward)
     port = int(os.environ.get("PAPERSCRAPER_WEB_PORT", "7681"))
     # Only this machine (cloudflared); PAPERSCRAPER_WEB_HOST=0.0.0.0 only for trying it in a container.
     host = os.environ.get("PAPERSCRAPER_WEB_HOST", "127.0.0.1")
-    web.run_app(app, host=host, port=port, print=lambda *_: print(f"Terminal web en {host}:{port}"))
+    web.run_app(app, host=host, port=port, print=lambda *_: print(f"Panel y terminal web en {host}:{port}"))
 
 
 if __name__ == "__main__":

@@ -154,17 +154,27 @@ def delete_files(files: list[Path], folder: Path, library: Path, papers_file: Pa
         "¿Que no se vuelvan a descargar (ni al reintentar las pendientes ni en la revisión diaria)?",
         default=True,
     ).ask()
+    deleted, errors = remove_files(chosen, library, papers_file, papers, paper_of, forget)
+    for error in errors:
+        print(f"  ✗ {error}")
+    print(f"✓ Borrados {deleted} archivos.")
 
+
+def remove_files(chosen: list[Path], library: Path, papers_file: Path | None, papers: list[Paper],
+                 paper_of: dict[Path, Paper], forget: bool) -> tuple[int, list[str]]:
+    """Delete the chosen files (only inside the library); with `forget`, their works aren't downloaded
+    again. Returns how many were deleted and the errors (also used by the web panel)."""
     deleted = 0
+    errors = []
     for path in chosen:
         if not inside(path, library):
-            print(f"  ✗ {path.name}: no está dentro de {library}; no se toca.")
+            errors.append(f"{path.name}: no está dentro de {library}; no se toca.")
             continue
         try:
             path.unlink()
             deleted += 1
         except OSError as error:
-            print(f"  ✗ {path.name}: {error}")
+            errors.append(f"{path.name}: {error}")
             continue
         paper = paper_of.get(path)
         if paper:
@@ -173,6 +183,6 @@ def delete_files(files: list[Path], folder: Path, library: Path, papers_file: Pa
                 # "rejected" also survives a new search of the author (main.keep_earlier_wanted).
                 paper.wanted = False
                 paper.review = "rejected"
-    if papers_file and in_list:
+    if papers_file and any(path in paper_of for path in chosen):
         update_papers(papers_file, papers)
-    print(f"✓ Borrados {deleted} archivos.")
+    return deleted, errors

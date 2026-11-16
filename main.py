@@ -6,6 +6,7 @@ import questionary
 import requests
 
 import browser_session
+import download_history
 from bibliography import find_works, read_references
 from calibre_library import CalibreLibrary, identifier_keys, title_keys
 from downloader import add_metadata, download_paper, downloaded_file, is_downloaded, tag_repeated_filenames
@@ -28,7 +29,6 @@ from sources.google_books import GoogleBooksSource
 from sources.gutenberg import GutenbergSource
 from sources.hathitrust import HathiTrustSource
 from sources.internet_archive import InternetArchiveSource
-from sources.names import name_words
 from sources.openalex import OpenAlexError, OpenAlexSource
 from reviews import ask_doubtful, doubtful, needs_review, review_in_menu, set_pending
 from sources.philarchive import PhilArchiveSource
@@ -38,7 +38,8 @@ from library_browser import browse_library
 from languages import (LANGUAGE_NAMES, current_choice, keep_chosen_languages, languages_label, load_settings,
                        paper_language_allowed, save_settings, using_languages)
 from run_lock import daily_check_running
-from storage import PAPERS_FILENAME, find_saved_lists, load_content, load_papers, save_papers, save_search, set_follow, update_papers
+from storage import (PAPERS_FILENAME, find_saved_lists, load_content, load_papers, save_papers, save_search,
+                     set_follow, update_papers, work_key)
 
 LIBRARY_FOLDER = Path("library")
 TITLE_SEARCH_FOLDER = LIBRARY_FOLDER / "Búsquedas por título"
@@ -76,8 +77,9 @@ INDEXED_SOURCE_TYPES = (DoabSource, DialnetSource, PhilArchiveSource, BNESource)
 MAX_CATALOGUE_CANDIDATES = 5
 # The user's Calibre library, when .env has its address; set in main().
 calibre: CalibreLibrary | None = None
-# Called with (paper, folder) every time a work is downloaded (the daily check sends a Telegram message).
-DOWNLOAD_LISTENERS: list[Callable[[Paper, Path], None]] = []
+# Called with (paper, folder) every time a work is downloaded: the history of the web panel, and the
+# daily check adds its own (Calibre and a Telegram message).
+DOWNLOAD_LISTENERS: list[Callable[[Paper, Path], None]] = [download_history.record]
 
 
 def author_label(author: Author) -> str:
@@ -490,10 +492,6 @@ def keep_earlier_wanted(papers: list[Paper], folder: Path) -> None:
             paper.review, paper.review_id = reviews[work_key(paper)]
             if paper.review in ("rejected", "pending"):
                 paper.wanted = False
-
-
-def work_key(paper: Paper) -> str:
-    return (paper.doi or "").lower() or " ".join(name_words(paper.title or ""))
 
 
 def after_download(papers: list[Paper], folder: Path) -> None:

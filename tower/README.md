@@ -1,9 +1,9 @@
-# paperScraper en la torre: terminal web y revisión diaria
+# paperScraper en la torre: panel web, terminal web y revisión diaria
 
 Dos contenedores (`docker-compose.yml`, en la raíz del proyecto):
 
-- **`paperscraper_web`**: el menú de `main.py`, el mismo de siempre, en una terminal web
-  (`https://papers.philtext.org`), con usuario y contraseña. ttyd la muestra en el navegador; delante tiene
+- **`paperscraper_web`**: el panel web (`https://papers.philtext.org`, con usuario y contraseña), pensado
+  para el móvil, y el menú de `main.py`, el mismo de siempre, en una terminal web. ttyd la muestra en el navegador; delante tiene
   una página de inicio de sesión (`tower/web_login.py`), que solo escucha en la torre (`localhost:7681`).
   tmux guarda la sesión: si cierras la pestaña o se corta la conexión, la búsqueda sigue, y al volver
   la encuentras donde estaba.
@@ -84,13 +84,30 @@ CNAME `papers` → `<id-del-túnel>.cfargotunnel.com`, con proxy (nube naranja).
 
 Abre `https://papers.philtext.org`: tiene que pedir usuario y contraseña antes de enseñar nada.
 
+## El panel web
+
+Tras iniciar sesión se abre el panel (`webapp/`, servido por `tower/web_login.py` en `/p/<sesión>/`):
+
+- **Siempre arriba:** si la revisión diaria está en marcha (desde cuándo y qué autor va revisando) o cómo
+  acabó la última y cuándo es la próxima; y si hay una tarea del panel en marcha. Tocándolas, su log en vivo.
+- **Últimas descargas:** todo lo que se descarga (búsquedas, revisión diaria, archivos subidos a mano) queda
+  apuntado en `library/.history/downloads.jsonl`.
+- **Menú:** las opciones del menú de la terminal. Las largas (reintentar, subir a Calibre, catálogos,
+  metadatos, obras dudosas aceptadas, revisión diaria ahora) son tareas: una a la vez, en su propio proceso,
+  con su salida en `library/.web/job.log`. Las búsquedas por autor, título y bibliografía siguen, de momento,
+  en la terminal (enlace "Terminal", arriba a la derecha).
+- **Pendientes a mano:** cada obra tiene "Abrir" (su página) y un botón para subir el PDF o EPUB que hayas
+  descargado en el móvil o el ordenador; se guarda con su nombre y metadatos, y luego "Subir a Calibre".
+- Nada que cambie las listas se hace mientras la revisión diaria está en marcha. Tampoco lances lo mismo a la
+  vez desde el panel y desde la terminal: escribirían las mismas listas.
+
 ## Uso de la terminal web
 
 - Es la terminal de siempre: flechas y Enter; en las listas de casillas, espacio para marcar.
 - En el móvil, sin flechas: `j` y `k` para bajar y subir.
 - Ctrl+C interrumpe, como siempre. Al terminar cada opción, Enter vuelve al menú.
 - Rueda del ratón para ver lo de antes; para copiar texto, selecciona con Shift pulsado.
-- "Descargar a mano las pendientes" no sirve aquí: abriría un navegador dentro del contenedor.
+- "Descargar a mano las pendientes" no sirve aquí: abriría un navegador dentro del contenedor. Usa la del panel.
 
 ## Revisión diaria
 

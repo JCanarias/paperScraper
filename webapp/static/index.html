@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#16181d" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<title>paperScraper</title>
+<link rel="stylesheet" href="static/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-row">
+    <a class="brand" href="#/">paperScraper</a>
+    <a class="terminal-link" id="terminal-link" href="#">Terminal</a>
+  </div>
+  <a class="status" id="daily-status" href="#/daily">
+    <span class="dot" id="daily-dot"></span><span id="daily-text">Comprobando la revisión diaria…</span>
+  </a>
+  <a class="status job hidden" id="job-status" href="#/job">
+    <span class="dot running"></span><span id="job-text"></span>
+  </a>
+</header>
+<main id="view"></main>
+<div class="toast hidden" id="toast" role="status"></div>
+<script src="static/app.js"></script>
+</body>
+</html>
