@@ -86,20 +86,36 @@ Abre `https://papers.philtext.org`: tiene que pedir usuario y contraseña antes 
 
 ## El panel web
 
-Tras iniciar sesión se abre el panel (`webapp/`, servido por `tower/web_login.py` en `/p/<sesión>/`):
+Tras iniciar sesión se abre el panel (`webapp/`, servido por `tower/web_login.py` en `/p/<sesión>/`). Tiene
+todas las opciones del menú; la terminal sigue a un toque (enlace "Terminal", arriba a la derecha). En el
+móvil se puede añadir a la pantalla de inicio ("Añadir a pantalla de inicio") y se abre como una app.
 
 - **Siempre arriba:** si la revisión diaria está en marcha (desde cuándo y qué autor va revisando) o cómo
-  acabó la última y cuándo es la próxima; y si hay una tarea del panel en marcha. Tocándolas, su log en vivo.
-- **Últimas descargas:** todo lo que se descarga (búsquedas, revisión diaria, archivos subidos a mano) queda
-  apuntado en `library/.history/downloads.jsonl`.
-- **Menú:** las opciones del menú de la terminal. Las largas (reintentar, subir a Calibre, catálogos,
-  metadatos, obras dudosas aceptadas, revisión diaria ahora) son tareas: una a la vez, en su propio proceso,
-  con su salida en `library/.web/job.log`. Las búsquedas por autor, título y bibliografía siguen, de momento,
-  en la terminal (enlace "Terminal", arriba a la derecha).
-- **Pendientes a mano:** cada obra tiene "Abrir" (su página) y un botón para subir el PDF o EPUB que hayas
-  descargado en el móvil o el ordenador; se guarda con su nombre y metadatos, y luego "Subir a Calibre".
-- Nada que cambie las listas se hace mientras la revisión diaria está en marcha. Tampoco lances lo mismo a la
-  vez desde el panel y desde la terminal: escribirían las mismas listas.
+  acabó la última y cuándo es la próxima; y si hay una tarea del panel en marcha, con su última línea.
+  Tocándolas, su log en vivo.
+- **Abajo, cuatro pestañas:**
+  - **Inicio:** contadores (dudosas, pendientes, sin subir), la última tarea, las últimas descargas y el resto
+    de opciones (biblioteca, autores que seguir, idiomas, catálogos, metadatos, revisión diaria ahora).
+    Todo lo que se descarga queda apuntado en `library/.history/downloads.jsonl`.
+  - **Buscar:**
+    - *Autor:* busca los perfiles en OpenAlex, dice cuáles ya están en tu biblioteca y deja ver sus obras más
+      citadas. Se marcan los perfiles de la persona (se juntan en una lista, como en el menú) y sus idiomas, que
+      empiezan por los de su última búsqueda. Las obras dudosas no se preguntan en la búsqueda: esperan en
+      "Obras dudosas".
+    - *Título:* la búsqueda es una tarea; al acabar se eligen las obras (filtro, "marcar las que no están en
+      Calibre") y se descargan. La última búsqueda se guarda en `library/.web/title_results.json`.
+    - *Bibliografía:* un archivo .bib, .ris o .txt, o las referencias pegadas, una por línea. Se guarda en
+      `library/.web/bibliographies/` con la fecha y la hora, y su lista en `library/Bibliografías/`.
+  - **Pendiente:** obras dudosas (descargar o descartar cada una, o todas las de un autor), descargar a mano
+    (abrir su página y subir el PDF o EPUB desde el móvil: se guarda con su nombre y metadatos), reintentar
+    las pendientes y subir a Calibre. El número rojo son las dudosas por decidir.
+  - **Tarea:** el log en vivo de la tarea del panel, el botón para pararla y, al acabar, el paso siguiente.
+- Las opciones largas son tareas: una a la vez, en su propio proceso (`python -m webapp.jobs`), con su salida
+  en `library/.web/job.log`. "Parar la tarea" hace lo mismo que Ctrl+C en el menú: lo descargado se queda y
+  la lista se guarda.
+- Nada que cambie las listas se hace mientras la revisión diaria está en marcha. Y si a las 6:00 hay una tarea
+  del panel en marcha, la revisión diaria espera a que termine (`library/.web/task.lock`). No lances lo mismo
+  a la vez desde el panel y desde la terminal: escribirían las mismas listas.
 
 ## Uso de la terminal web
 

@@ -80,9 +80,6 @@ La lista de fuentes propuestas, con su valoración: [SOURCES_TO_CHECK.md](SOURCE
   - Las fuentes no distinguen el papel de cada persona, así que todos aparecen como autores.
   - Calibre solo lo admitiría con columnas personalizadas.
 - **Credenciales de Calibre:** crear el usuario `automations` (no de solo lectura) y ponerlo en `.env` (`CALIBRE_URL`, `CALIBRE_USERNAME`, `CALIBRE_PASSWORD`). Probarlo contra el servidor real.
-- **Panel web, fase 2:** las búsquedas por autor, por título y desde una bibliografía, como pantallas del panel
-  (`webapp/`) en vez de la terminal: elegir el autor entre los perfiles de OpenAlex, marcar las obras, ver
-  la descarga en vivo. Ahora el panel las manda a la terminal.
 - **Frontend propio para Calibre:** una web nuestra para la biblioteca, en la torre, que use las mismas
   llamadas que la web oficial del servidor de Calibre (las de `calibre_library.py`), nunca `metadata.db` directamente.
   - Biblioteca: buscar, portadas, filtrar por autor, etiqueta o serie; ficha de cada libro.

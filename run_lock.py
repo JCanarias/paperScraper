@@ -1,5 +1,7 @@
 """Tells whether the daily check is running, so it and the menu don't write the same lists at once.
 
+The tasks of the web panel have their own lock: the daily check waits for them to end.
+
 The lock is held by the operating system while the daily check runs: if the program crashes or
 the machine restarts, it is gone, and the next run doesn't find an old lock left behind.
 """
@@ -7,12 +9,29 @@ from pathlib import Path
 from typing import IO
 
 LOCK_FILE = Path("library") / ".daily_check.lock"
+PANEL_TASK_LOCK_FILE = Path("library") / ".web" / "task.lock"
 
 
 def take_daily_lock() -> IO | None:
     """Take the lock and return its file (keep it open while running), or None if another run has it."""
-    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    lock_file = open(LOCK_FILE, "a+")
+    return take_lock(LOCK_FILE)
+
+
+def daily_check_running() -> bool:
+    return is_locked(LOCK_FILE)
+
+
+def take_panel_task_lock() -> IO | None:
+    return take_lock(PANEL_TASK_LOCK_FILE)
+
+
+def panel_task_running() -> bool:
+    return is_locked(PANEL_TASK_LOCK_FILE)
+
+
+def take_lock(path: Path) -> IO | None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_file = open(path, "a+")
     try:
         _lock(lock_file)
     except OSError:
@@ -21,8 +40,8 @@ def take_daily_lock() -> IO | None:
     return lock_file
 
 
-def daily_check_running() -> bool:
-    lock_file = take_daily_lock()
+def is_locked(path: Path) -> bool:
+    lock_file = take_lock(path)
     if lock_file is None:
         return True
     _unlock(lock_file)

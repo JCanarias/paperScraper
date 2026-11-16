@@ -11,6 +11,9 @@ import time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from run_lock import panel_task_running  # noqa: E402
+
 RUN_AT = dt.time(6, 0)
 LAST_RUN_FILE = Path("library") / ".daily_check.last"
 TIME_ZONE = ZoneInfo(os.environ.get("TZ") or "Europe/Madrid")
@@ -20,6 +23,7 @@ MAX_SLEEP_SECONDS = 600
 # Each check is also written here: `docker logs` loses everything when ./update.sh recreates the container.
 LOG_FOLDER = Path("library") / ".logs"
 LOG_DAYS = 90
+PANEL_TASK_WAIT_SECONDS = 60
 
 
 def last_run_day() -> dt.date | None:
@@ -66,6 +70,10 @@ def main() -> None:
     while True:
         now = dt.datetime.now(TIME_ZONE)
         if now.time() >= RUN_AT and last_run_day() != now.date():
+            # A task of the web panel writes the same lists: the check starts when it ends.
+            if panel_task_running():
+                time.sleep(PANEL_TASK_WAIT_SECONDS)
+                continue
             run_check(now.date())
             continue
         next_run = dt.datetime.combine(now.date(), RUN_AT, TIME_ZONE)

@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import os
 import re
+import signal
 import sys
 import time
 from pathlib import Path
@@ -28,7 +29,8 @@ from reviews import needs_review
 from run_lock import daily_check_running
 from storage import find_saved_lists, load_content, load_papers, set_follow, update_papers, work_key
 from update_indexes import INDEXED_SOURCES
-from webapp.jobs import TASKS
+from webapp import jobs
+from webapp.jobs import BIBLIOGRAPHY_FOLDER, TASKS, TITLE_RESULTS
 
 REPO = Path(__file__).resolve().parent.parent
 STATIC = Path(__file__).resolve().parent / "static"
@@ -36,6 +38,7 @@ LIBRARY = Path("library")
 WEB_FOLDER = LIBRARY / ".web"
 JOB_LOG = WEB_FOLDER / "job.log"
 JOB_STATE = WEB_FOLDER / "job.json"
+JOB_ARGUMENTS = WEB_FOLDER / "job_arguments.json"
 DAILY_LOGS = LIBRARY / ".logs"
 DAILY_LAST_RUN = LIBRARY / ".daily_check.last"
 DAILY_RUN_AT = dt.time(6, 0)
@@ -45,6 +48,11 @@ LOG_LINES_SHOWN = 400
 DAILY_STATE_SECONDS = 5
 # A file uploaded from the phone can be a whole scanned book.
 MAX_UPLOAD_BYTES = 300 * 1024 * 1024
+MAX_BIBLIOGRAPHY_BYTES = 5 * 1024 * 1024
+# "Parar la tarea" first asks as Ctrl+C does (the task saves what it did); if it doesn't end, it is ended.
+STOP_GRACE_SECONDS = 45
+# The works of an author shown before choosing it, as in the menu.
+PREVIEW_WORKS = 15
 
 
 class Panel:
@@ -63,7 +71,8 @@ class Panel:
         path = (STATIC / request.match_info["name"]).resolve()
         if not path.is_relative_to(STATIC) or not path.is_file():
             raise web.HTTPNotFound()
-        return web.FileResponse(path, headers=NO_STORE)
+        # Kept by the phone, but asked again each time (a short "not modified" answer after an update).
+        return web.FileResponse(path, headers={"Cache-Control": "no-cache", "Referrer-Policy": "no-referrer"})
 
     # --- what is happening now ---
 
@@ -74,7 +83,12 @@ class Panel:
         return self.daily_running
 
     async def status(self, request: web.Request) -> web.Response:
-        return json_response({"daily": self.daily_state(), "job": self.job_state()})
+        # The logs only for the page that shows them: the bar on top polls this every few seconds.
+        wanted = request.query.get("log")
+        daily = self.daily_state()
+        if wanted != "daily":
+            daily.pop("log_tail", None)
+        return json_response({"daily": daily, "job": self.job_state(with_log=wanted == "job")})
 
     def daily_state(self) -> dict:
         running = self.is_daily_running()
@@ -101,10 +115,13 @@ class Panel:
 
     # --- the tasks ---
 
-    def job_state(self) -> dict:
+    def job_state(self, with_log: bool = True) -> dict:
         state = dict(self.job or {})
         if state:
-            state["log"] = tail(JOB_LOG, LOG_LINES_SHOWN)
+            log = tail(JOB_LOG, LOG_LINES_SHOWN if with_log else 8)
+            state["last_line"] = next((line.strip() for line in reversed(log) if line.strip()), "")
+            if with_log:
+                state["log"] = log
         return state
 
     def load_job(self) -> dict | None:
@@ -125,19 +142,31 @@ class Panel:
         task = request.match_info["task"]
         if task not in TASKS:
             raise web.HTTPNotFound()
-        if self.process and self.process.returncode is None:
-            return refuse(f"Ya hay una tarea en marcha: {self.job['label']}.")
-        if self.is_daily_running():
-            return refuse("La revisión diaria está en marcha; espera a que termine.")
         arguments = await request.json() if request.can_read_body else {}
+        return await self.launch(task, arguments if isinstance(arguments, dict) else {})
+
+    def busy(self) -> str | None:
+        """Why no task can start now, or None."""
+        if self.process and self.process.returncode is None:
+            return f"Ya hay una tarea en marcha: {self.job['label']}."
+        if self.is_daily_running():
+            return "La revisión diaria está en marcha; espera a que termine."
+        return None
+
+    async def launch(self, task: str, arguments: dict) -> web.Response:
+        reason = self.busy()
+        if reason:
+            return refuse(reason)
         WEB_FOLDER.mkdir(parents=True, exist_ok=True)
+        # In a file: a long list of choices doesn't fit in the command line.
+        JOB_ARGUMENTS.write_text(json.dumps(arguments, ensure_ascii=False), encoding="utf-8")
         log = JOB_LOG.open("w", encoding="utf-8")
         environment = {**os.environ, "PYTHONPATH": str(REPO), "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
         self.process = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "webapp.jobs", task, json.dumps(arguments),
+            sys.executable, "-m", "webapp.jobs", task, f"@{JOB_ARGUMENTS}",
             stdout=log, stderr=asyncio.subprocess.STDOUT, stdin=asyncio.subprocess.DEVNULL, env=environment)
         log.close()
-        self.job = {"task": task, "label": TASKS[task], "running": True, "started": now_text()}
+        self.job = {"task": task, "label": jobs.label(task, arguments), "running": True, "started": now_text()}
         self.save_job()
         asyncio.get_running_loop().create_task(self.wait_job(self.process))
         return json_response({"ok": True})
@@ -145,13 +174,110 @@ class Panel:
     async def wait_job(self, process: asyncio.subprocess.Process) -> None:
         code = await process.wait()
         if process is self.process:
-            self.job.update(running=False, finished=now_text(), code=code)
+            # Stopped by the user, even if it ended well (it saved what it had, as after Ctrl+C).
+            stopped = self.job.pop("stopping", False)
+            self.job.update(running=False, finished=now_text(), code=code, stopped=stopped)
             self.save_job()
 
     async def stop_job(self, request: web.Request) -> web.Response:
-        if self.process and self.process.returncode is None:
-            self.process.terminate()
+        process = self.process
+        if process and process.returncode is None:
+            if os.name == "nt":
+                process.terminate()
+            else:
+                process.send_signal(signal.SIGINT)
+                asyncio.get_running_loop().create_task(self.end_if_still_running(process))
+            self.job["stopping"] = True
         return json_response({"ok": True})
+
+    async def end_if_still_running(self, process: asyncio.subprocess.Process) -> None:
+        try:
+            await asyncio.wait_for(process.wait(), STOP_GRACE_SECONDS)
+        except asyncio.TimeoutError:
+            process.terminate()
+
+    # --- searches ---
+
+    async def find_authors(self, request: web.Request) -> web.Response:
+        """The OpenAlex profiles with that name, and what the library already has of each one."""
+        name = request.query.get("name", "").strip()
+        if not name:
+            return refuse("Escribe un nombre.")
+        try:
+            from sources.openalex import OpenAlexSource
+
+            authors = await asyncio.get_running_loop().run_in_executor(None, OpenAlexSource().find_authors, name)
+        except Exception as error:
+            return refuse(f"OpenAlex no responde: {error}")
+        known = {}
+        for papers_file, content, papers in load_lists():
+            for profile in content.get("profiles") or ([content["author"]] if "author" in content else []):
+                known[profile.get("id")] = {"list": relative(papers_file), "name": list_name(papers_file, content),
+                                            "works": len(papers), "follow": bool(content.get("follow")),
+                                            "language_choice": content.get("language_choice")}
+        return json_response({"authors": [{
+            "id": author.id, "name": author.name, "works_count": author.works_count,
+            "institutions": author.institutions, "known": known.get(author.id)} for author in authors]})
+
+    async def author_works(self, request: web.Request) -> web.Response:
+        """The most cited works of an OpenAlex profile, to tell who it is."""
+        author_id = request.query.get("id", "")
+        if not re.fullmatch(r"https://openalex\.org/A\d+", author_id):
+            return refuse("No es un autor de OpenAlex.")
+        try:
+            from models import Author
+            from sources.openalex import OpenAlexSource
+
+            author = Author(id=author_id, name="", works_count=0, institutions=[])
+            papers = await asyncio.get_running_loop().run_in_executor(
+                None, OpenAlexSource().get_top_papers, author, PREVIEW_WORKS)
+        except Exception as error:
+            return refuse(f"OpenAlex no responde: {error}")
+        return json_response({"works": [work_data(paper) for paper in papers]})
+
+    async def title_results(self, request: web.Request) -> web.Response:
+        """The works found by the last search by title, to choose which to download."""
+        from models import Paper
+
+        try:
+            results = json.loads(TITLE_RESULTS.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return json_response({"words": None, "works": []})
+        works = []
+        for number, fields in enumerate(results.get("papers") or []):
+            paper = Paper(**fields)
+            works.append({**work_data(paper), "number": number, "in_calibre": paper.in_calibre,
+                          "has_link": bool(paper.pdf_urls)})
+        return json_response({"words": results.get("words"), "works": works})
+
+    async def send_bibliography(self, request: web.Request) -> web.Response:
+        """A bibliography sent as a file or pasted as text: it is saved and its works are downloaded."""
+        reason = self.busy()
+        if reason:
+            return refuse(reason)
+        try:
+            form = await request.post()
+        except UnicodeDecodeError:
+            return refuse("El texto no está en UTF-8: guárdalo en un archivo y envía el archivo.")
+        upload = form.get("file")
+        if hasattr(upload, "file"):
+            content = upload.file.read(MAX_BIBLIOGRAPHY_BYTES + 1)
+            name = Path(upload.filename or "bibliografia.txt").name
+        else:
+            content = str(form.get("text") or "").encode("utf-8")
+            name = "bibliografia.txt"
+        if not content.strip():
+            return refuse("La bibliografía está vacía.")
+        if len(content) > MAX_BIBLIOGRAPHY_BYTES:
+            return refuse("El archivo es demasiado grande para ser una bibliografía.")
+        stem, suffix = os.path.splitext(name)
+        suffix = suffix.lower() if suffix.lower() in (".bib", ".ris", ".txt") else ".txt"
+        stem = re.sub(r"[^\w .,()-]", "", stem).strip() or "bibliografia"
+        # The day and time in the name: each bibliography sent gets its own list (two pasted ones too).
+        name = f"{stem[:80]} {dt.datetime.now():%Y-%m-%d %H.%M}{suffix}"
+        BIBLIOGRAPHY_FOLDER.mkdir(parents=True, exist_ok=True)
+        (BIBLIOGRAPHY_FOLDER / name).write_bytes(content)
+        return await self.launch("bibliography", {"file": name})
 
     # --- the home page: latest downloads and what is waiting ---
 
@@ -416,6 +542,10 @@ def add_routes(app: web.Application, prefix: str, check) -> None:
         ("GET", "/static/{name}", panel.static),
         ("GET", "/api/status", panel.status),
         ("GET", "/api/home", panel.home),
+        ("GET", "/api/authors", panel.find_authors),
+        ("GET", "/api/author_works", panel.author_works),
+        ("GET", "/api/title_results", panel.title_results),
+        ("POST", "/api/bibliography", panel.send_bibliography),
         ("POST", "/api/job/stop", panel.stop_job),
         ("POST", "/api/job/{task}", panel.start_job),
         ("GET", "/api/reviews", panel.reviews),

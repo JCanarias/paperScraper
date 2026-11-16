@@ -314,24 +314,31 @@ def search_by_title(source: OpenAlexSource) -> None:
         print("No has escrito ninguna palabra.")
         return
 
-    print("Buscando en OpenAlex...")
-    papers, total = source.search_papers_by_title(words, MAX_TITLE_RESULTS)
-    books = find_books(lambda book_source: book_source.search_books_by_title(words, MAX_BOOKS_PER_SOURCE))
-    if not papers and not books:
-        print("No se ha encontrado ninguna obra con esas palabras en el título.")
+    found = find_by_title(source, words)
+    if not found:
         return
-
-    if total > len(papers):
-        print(f"\nHay {total} coincidencias en OpenAlex; se usan las {len(papers)} más relevantes.")
-    print(f"\nSe han encontrado {len(papers)} obras en OpenAlex y {len(books)} libros en otras bibliotecas.\n")
-
-    found = prepare_list(papers + books)
     selected_papers = confirm_papers_to_download(found)
     if not selected_papers:
         print("No se descarga nada.")
         return
 
     download_and_save_search(words, selected_papers, search_folder(TITLE_SEARCH_FOLDER, words))
+
+
+def find_by_title(source: OpenAlexSource, words: str) -> list[Paper]:
+    """The works with these words in the title, ready to choose (the web panel uses it too)."""
+    print("Buscando en OpenAlex...")
+    papers, total = source.search_papers_by_title(words, MAX_TITLE_RESULTS)
+    books = find_books(lambda book_source: book_source.search_books_by_title(words, MAX_BOOKS_PER_SOURCE))
+    if not papers and not books:
+        print("No se ha encontrado ninguna obra con esas palabras en el título.")
+        return []
+
+    if total > len(papers):
+        print(f"\nHay {total} coincidencias en OpenAlex; se usan las {len(papers)} más relevantes.")
+    print(f"\nSe han encontrado {len(papers)} obras en OpenAlex y {len(books)} libros en otras bibliotecas.\n")
+
+    return prepare_list(papers + books)
 
 
 def download_and_save_search(words: str, selected_papers: list[Paper], folder: Path) -> None:
@@ -399,7 +406,9 @@ def ask_author_languages(folder: Path) -> dict | None:
 
 
 def download_author_works(source: OpenAlexSource, selected_authors: list[Author], main_author: Author,
-                          folder: Path, language_choice: dict) -> None:
+                          folder: Path, language_choice: dict, ask_doubtful_works: bool = True) -> None:
+    """Find, download and save the works of one person. Without `ask_doubtful_works` (the web panel),
+    the doubtful ones wait in "Revisar obras dudosas" instead of being asked here."""
     print(f"\n{'='*60}")
     print(f"Procesando: {', '.join(author.name for author in selected_authors)}")
     print(f"{'='*60}")
@@ -415,7 +424,9 @@ def download_author_works(source: OpenAlexSource, selected_authors: list[Author]
     waiting = [paper for paper in candidates if doubtful(paper) and paper.review != "accepted"]
     if waiting:
         print(f"\n{len(waiting)} obras solo están en Internet Archive o Google Books.")
-        chosen = ask_doubtful(waiting, main_author.name)
+        chosen = ask_doubtful(waiting, main_author.name) if ask_doubtful_works else None
+        if chosen is None:
+            print("Se quedan en \"Revisar obras dudosas\" hasta que digas cuáles son suyas.")
         for paper in waiting:
             if chosen is None:
                 # Ctrl+C: they are asked again in "Revisar obras dudosas" (or by Telegram, if followed).
@@ -610,7 +621,11 @@ def search_by_bibliography(source: OpenAlexSource) -> None:
     if not file_path.is_file():
         print(f"No existe el archivo {file_path}.")
         return
+    download_bibliography(source, file_path)
 
+
+def download_bibliography(source: OpenAlexSource, file_path: Path) -> None:
+    """Find the works of a bibliography and download the ones not in Calibre (the web panel uses it too)."""
     references = read_references(file_path)
     if not references:
         print("No se ha encontrado ninguna referencia en el archivo.")
