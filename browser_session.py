@@ -17,7 +17,8 @@ from urllib.parse import urlparse
 BROWSER_HOSTS = ("cervantesvirtual.com", "bne.es", "gallica.bnf.fr", "hathitrust.org", "revistas.unav.edu")
 # The check pages, by their title or by the start of their text (some keep the website's title).
 CHALLENGE_TEXTS = ("just a moment", "un momento", "verificación de seguridad", "verificación de acceso",
-                   "se verifica su acceso", "attention required")
+                   "se verifica su acceso", "attention required", "making sure you", "preparing to download",
+                   "checking your browser", "verificando acceso")
 PASS_TIMEOUT_SECONDS = 120
 # Some checks (Cloudflare Turnstile) wait for a click on their box. The box takes a few seconds to
 # be ready, and a click while it is still checking starts it again, so the clicks are well apart.
@@ -39,9 +40,12 @@ class BrowserError(Exception):
 
 
 _driver = None
+# The browser's temporary folder, and inside it the one of the current download.
+_browser_folder: Path | None = None
 _download_folder: Path | None = None
 _last_request: dict[str, float] = {}
-# Websites that refused the browser in this run: not asked again until the program restarts.
+# Websites that refused the browser in this run, or whose check it didn't pass (BHL, CORE: two
+# minutes each time): not asked again until the program restarts.
 _blocked_hosts: set[str] = set()
 
 
@@ -68,14 +72,25 @@ def get_page(url: str, wait_for: str | None = None) -> str:
 
 def download(url: str) -> tuple[bytes | None, str]:
     """The file at the address, or None and the source of the page shown instead."""
-    _empty_download_folder()
+    _new_download_folder(_get_driver())
     driver = _open(url)
     return _wait_for_file(driver, url)
 
 
-def _empty_download_folder() -> None:
-    for leftover in _download_folder.iterdir() if _download_folder else ():
-        leftover.unlink(missing_ok=True)
+def _new_download_folder(driver) -> None:
+    """Each download gets its own folder. Some websites send their file twice (De Gruyter), and the
+    second copy can arrive later: in the old folder, it can't be taken for
+    the next work's file."""
+    global _download_folder
+    # Leave the last page first: while it is open it can still start a download.
+    driver.get("about:blank")
+    previous = _download_folder
+    _download_folder = Path(tempfile.mkdtemp(dir=_browser_folder))
+    driver.execute_cdp_cmd("Browser.setDownloadBehavior", {
+        "behavior": "allow", "downloadPath": str(_download_folder),
+    })
+    if previous and previous != _browser_folder:
+        shutil.rmtree(previous, ignore_errors=True)
 
 
 def _wait_for_file(driver, url: str) -> tuple[bytes | None, str]:
@@ -101,8 +116,8 @@ def quit_browser() -> None:
         except Exception:
             pass
         _driver = None
-    if _download_folder:
-        shutil.rmtree(_download_folder, ignore_errors=True)
+    if _browser_folder:
+        shutil.rmtree(_browser_folder, ignore_errors=True)
 
 
 def _open(url: str):
@@ -122,6 +137,7 @@ def _open(url: str):
             _blocked_hosts.add(host)
             raise BrowserError(f"{host} no deja entrar al navegador")
         if time.monotonic() - started > PASS_TIMEOUT_SECONDS:
+            _blocked_hosts.add(host)
             raise BrowserError(f"{host} no deja pasar al navegador (comprobación de seguridad)")
         if time.monotonic() - last_click > SECONDS_BETWEEN_CLICKS:
             _click_turnstile(driver)
@@ -160,11 +176,11 @@ def _click_turnstile(driver) -> None:
 
 
 def _get_driver():
-    global _driver, _download_folder
+    global _driver, _browser_folder, _download_folder
     if _driver is None:
         from selenium import webdriver
 
-        _download_folder = Path(tempfile.mkdtemp(prefix="paperscraper-browser-"))
+        _browser_folder = _download_folder = Path(tempfile.mkdtemp(prefix="paperscraper-browser-"))
         options = webdriver.ChromeOptions()
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])

@@ -55,7 +55,16 @@ página en tu navegador.
 - **Falta:** una clave gratuita, `GOOGLE_BOOKS_API_KEY` en `.env` (console.cloud.google.com → API "Books API"). Sin clave, todas las peticiones comparten una cuota diaria mundial que siempre está gastada ("429 Quota exceeded"), así que sin clave la fuente no se usa.
 - **Por qué a mano:** sus condiciones y su robots.txt prohíben descargar con programas. Se guarda el enlace de Google, y sus obras pasan por la revisión de obras dudosas.
 
+### Biblioteca Digital de Múnich (MDZ, digitale-sammlungen.de)
+- **Qué hay:** OpenAlex y otras fuentes enlazan su visor o imágenes sueltas de páginas (Segner, Kant, Fichte: 57 obras pendientes en noviembre de 2026).
+- **Por qué a mano:** su servicio de PDF (download.digitale-sammlungen.de) prohíbe todo programa en su robots.txt, y pide aceptar el aviso de derechos. En el visor, "Download Options" → "PDF/DaFo".
+- **Qué se puede hacer:** que el enlace a mano lleve al visor de la obra (los enlaces viejos de bsb-muenchen-digital.de acaban en la portada).
+
 ## Fuentes que no se pueden automatizar del todo
+
+### Biodiversity Heritage Library y CORE
+- **Qué pasa:** sus PDFs están detrás de una verificación de Cloudflare que no deja pasar ni al navegador real (125 obras pendientes en noviembre de 2026: 91 de Darwin en BHL). Su robots.txt sí permite descargar.
+- **Qué se puede hacer:** las dos tienen API con clave gratuita. BHL: biodiversitylibrary.org/getapikey; su API da también el identificador de la copia de Internet Archive, de donde se descarga el PDF. CORE: core.ac.uk/services/api (`CORE_API_KEY`).
 
 ### DOAB / OAPEN (lo que falta)
 - **Los libros de OAPEN posteriores a finales de 2024:** no están en la copia de Internet Archive. OAPEN tiene bloqueada nuestra IP desde las pruebas.

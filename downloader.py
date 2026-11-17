@@ -32,6 +32,10 @@ HEADERS = {"User-Agent": "Mozilla/5.0"}
 # answers with a "you're not a bot?" page instead of the book.
 HONEST_HEADERS = {"User-Agent": "paperScraper/1.0 (https://github.com/JCanarias/paperScraper)"}
 HONEST_HOSTS = ("ws-export.wmcloud.org", "wikisource.org", "wikimedia.org")
+# The titles of the check pages that a real browser passes on its own, with no click: Anubis (many
+# university repositories: Valencia, Salamanca, UPM...), PubMed Central, the Universidad de Chile.
+BROWSER_CHECK_TITLES = ("making sure you&#39;re not a bot", "making sure you're not a bot", "preparing to download",
+                        "checking your browser", "verificando acceso")
 # Their works are only downloaded by hand: Gallica and the BNE block the PDFs to programs, and
 # HathiTrust's and Google's terms forbid downloading with them. Their links are the pages opened for the user.
 MANUAL_ONLY_HOSTS = ("gallica.bnf.fr", "bnedigital.bne.es", "hathitrust.org", "books.google.com", "books.google.es")
@@ -103,15 +107,34 @@ def fetch(url: str) -> tuple[bytes, str, str]:
     if browser_session.needs_browser(url):
         content, page = browser_session.download(url)
         return content or b"", page, url
-    response = requests.get(url, headers=headers_for(url), timeout=DOWNLOAD_TIMEOUT_SECONDS)
+    headers = headers_for(url)
+    response = requests.get(url, headers=headers, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+    # Anubis, and some other filters (Zenodo), stop the programs that pass for a browser but let in
+    # the ones that say who they are: asked again once with the program's own name.
+    if headers is HEADERS and not behind_cloudflare_check(response) and (
+            response.status_code in (403, 429) or page_title(response).startswith(BROWSER_CHECK_TITLES)):
+        response = requests.get(url, headers=HONEST_HEADERS, timeout=DOWNLOAD_TIMEOUT_SECONDS)
     # The same check on a website not in the list, or reached through a redirect (doi.org,
     # hdl.handle.net): the browser opens the address where the check was, only then.
-    if browser_session.needs_browser(response.url) or behind_cloudflare_check(response):
+    if browser_session.needs_browser(response.url) or behind_browser_check(response):
         content, page = browser_session.download(response.url)
         return content or b"", page, response.url
     response.raise_for_status()
     page = response.text if "html" in response.headers.get("content-type", "") else ""
     return response.content, page, response.url
+
+
+def behind_browser_check(response: requests.Response) -> bool:
+    """A check page that a real browser usually passes: Cloudflare's, Amazon's (De Gruyter) and others."""
+    return (behind_cloudflare_check(response) or response.headers.get("x-amzn-waf-action") == "challenge"
+            or page_title(response).startswith(BROWSER_CHECK_TITLES))
+
+
+def page_title(response: requests.Response) -> str:
+    if "html" not in response.headers.get("content-type", ""):
+        return ""
+    title = re.search(r"<title[^>]*>(.*?)</title>", response.text[:PAGE_HEAD_LENGTH], re.S | re.I)
+    return title.group(1).strip().lower() if title else ""
 
 
 def behind_cloudflare_check(response: requests.Response) -> bool:
