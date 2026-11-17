@@ -218,3 +218,12 @@ h2.group-head button.link { margin-left: 10px; text-transform: none; letter-spac
 a.button { color: var(--text); }
 a.button.primary { color: var(--accent-text); }
 label.button { position: relative; }
+
+/* The reports of the daily check. */
+.report-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.warn-text { color: var(--warn); }
+details.report > summary { font-weight: normal; align-items: flex-start; }
+details.report > summary .title { font-weight: 600; }
+details[open] > summary .chevron { transform: rotate(90deg); }
+.chevron { transition: transform .15s; }
+h3 { font-size: .9rem; margin: 12px 0 4px; }

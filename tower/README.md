@@ -94,9 +94,12 @@ móvil se puede añadir a la pantalla de inicio ("Añadir a pantalla de inicio")
   acabó la última y cuándo es la próxima; y si hay una tarea del panel en marcha, con su última línea.
   Tocándolas, su log en vivo.
 - **Abajo, cuatro pestañas:**
-  - **Inicio:** contadores (dudosas, pendientes, sin subir), la última tarea, las últimas descargas y el resto
-    de opciones (biblioteca, autores que seguir, idiomas, catálogos, metadatos, revisión diaria ahora).
-    Todo lo que se descarga queda apuntado en `library/.history/downloads.jsonl`.
+  - **Inicio:** contadores (dudosas, pendientes, sin subir), el informe de la última revisión diaria, la última
+    tarea, las últimas descargas y el resto de opciones (biblioteca, autores que seguir, idiomas, catálogos,
+    metadatos, revisión diaria). Todo lo que se descarga queda apuntado en `library/.history/downloads.jsonl`.
+  - **Revisión diaria** (en "Más", o tocando su informe): el informe de cada revisión del último mes, como el
+    de Telegram, con lo descargado, los autores con novedades y los problemas de las fuentes; también las
+    paradas o fallidas. Se guardan en `library/.history/daily_reports.jsonl`. Debajo, el log de la última.
   - **Buscar:**
     - *Autor:* busca los perfiles en OpenAlex, dice cuáles ya están en tu biblioteca y deja ver sus obras más
       citadas. Se marcan los perfiles de la persona (se juntan en una lista, como en el menú) y sus idiomas, que

@@ -9,6 +9,7 @@ For each of them, as a new search by author would do, but without asking anythin
 3. sends every new file to Calibre and a Telegram message for each one.
 At the end it asks about the doubtful works by Telegram, downloads the ones accepted meanwhile,
 and sends a report by Telegram: what was found and downloaded, and the sources that failed.
+The same report is kept for the web panel (daily_reports.py).
 
 The tower runs it every day at 6:00 (the "daily" container, tower/scheduler.py). By hand:
     docker compose exec daily python daily_check.py
@@ -21,6 +22,7 @@ import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import daily_reports
 import main
 from downloader import is_downloaded, tag_repeated_filenames
 from duplicates import merge_duplicates, same_work
@@ -55,9 +57,12 @@ class AuthorResult:
 class Report:
     """What the check did, for the message sent at its end."""
     started: float = field(default_factory=time.monotonic)
+    started_at: dt.datetime = field(default_factory=dt.datetime.now)
     authors: dict[str, AuthorResult] = field(default_factory=dict)
     in_calibre: int = 0
     asked: int = 0
+    # The works downloaded, for the panel: title, authors, year, folder, what happened in Calibre.
+    downloads: list[dict] = field(default_factory=list)
     # Each problem line, and how many times it appeared.
     problems: dict[str, int] = field(default_factory=dict)
 
@@ -226,6 +231,10 @@ def on_download(paper: Paper, folder: Path) -> None:
         calibre_state = "No hay Calibre configurado; está en la carpeta."
     # The log of the check says it too, not only Telegram.
     print(f"    {calibre_state} [{paper.source or 'enlace de OpenAlex'}]")
+    report.downloads.append({
+        "title": paper.title, "authors": paper.authors[:3], "year": paper.year,
+        "source": paper.source or "enlace de OpenAlex", "author": report.author(folder).name, "calibre": calibre_state,
+    })
     lines = [
         "📥 Nueva obra descargada",
         f"{paper.title} ({paper.year or 's. f.'})",
@@ -271,6 +280,27 @@ def report_text() -> str:
     return "\n".join(lines)
 
 
+def report_data(outcome: str, error: str = "") -> dict:
+    """The report as the panel shows it; outcome is "ok", "failed" or "stopped"."""
+    results = list(report.authors.values())
+    return {
+        "started": report.started_at.isoformat(timespec="minutes"),
+        "ended": dt.datetime.now().isoformat(timespec="minutes"),
+        "minutes": round((time.monotonic() - report.started) / 60),
+        "outcome": outcome,
+        "error": error,
+        "authors_checked": len(results),
+        "downloaded": sum(result.downloaded for result in results),
+        "in_calibre": report.in_calibre if main.calibre else None,
+        "new": sum(result.new for result in results),
+        "pending": sum(result.pending for result in results),
+        "asked": report.asked,
+        "authors": [vars(result) for result in results if result.new or result.downloaded or result.failed],
+        "downloads": report.downloads,
+        "problems": [{"text": problem, "times": times} for problem, times in report.problems.items()],
+    }
+
+
 def main_check() -> None:
     sys.stdout = ProblemCollector(sys.stdout)
     lock = take_daily_lock()
@@ -305,9 +335,15 @@ def main_check() -> None:
         report.asked = asked or 0
         print("\n✓ Revisión diaria terminada.")
         send_message(report_text())
+        daily_reports.save(report_data("ok"))
+    except KeyboardInterrupt:
+        # Stopped from the panel or by hand: what it did until then is kept.
+        daily_reports.save(report_data("stopped"))
+        raise
     except Exception as error:
         traceback.print_exc()
         send_message(f"⚠️ La revisión diaria de paperScraper ha fallado: {error}")
+        daily_reports.save(report_data("failed", str(error)))
         sys.exit(1)
     finally:
         main.quit_finder_drivers()

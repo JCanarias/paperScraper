@@ -173,7 +173,7 @@ const MORE = [
   { label: "Actualizar los catálogos locales", hint: "Dialnet, PhilArchive, DOAB, BNE", page: "indexes" },
   { label: "Poner metadatos a los archivos ya descargados", task: "tag",
     question: "¿Escribir los metadatos en todos los archivos descargados?" },
-  { label: "Revisión diaria", hint: "Su log, y hacerla ahora", page: "daily" },
+  { label: "Revisión diaria", hint: "Sus informes y su log, y hacerla ahora", page: "daily" },
   { label: "Terminal", hint: "El menú de siempre", href: terminalUrl },
 ];
 
@@ -223,6 +223,10 @@ async function renderHome() {
       <div class="small ${job.running ? "" : result === "terminada" ? "ok-text" : "bad-text"}">${esc(capitalized(result))} · ${esc(shortDate(job.started))}</div>
       ${job.last_line ? `<div class="muted small ellipsis">${esc(job.last_line)}</div>` : ""}</a>`;
   }
+
+  html += `<h2>Última revisión diaria</h2>`;
+  html += data.daily_report ? `<a class="card link-card" href="#/daily">${reportHead(data.daily_report)}</a>`
+    : `<a class="card link-card" href="#/daily"><p class="empty">Todavía no hay informes. Cada revisión deja aquí el suyo al terminar.</p></a>`;
 
   const downloads = data.downloads || [];
   html += `<h2>Últimas descargas</h2><div class="card">`;
@@ -312,13 +316,89 @@ function showLog(element, lines) {
 
 // --- Revisión diaria ---
 
+const OUTCOMES = { ok: ["Terminada", "ok-text"], failed: ["Ha fallado", "bad-text"], stopped: ["Parada", "bad-text"] };
+
+// The numbers of a report, in one line: only the ones that say something.
+function reportNumbers(report) {
+  const parts = [plural(report.downloaded, "descargada", "descargadas"), plural(report.new, "nueva", "nuevas"),
+                 `${report.pending} sin archivo`];
+  if (report.asked) parts.push(plural(report.asked, "dudosa preguntada", "dudosas preguntadas"));
+  return parts.join(" · ");
+}
+
+function reportHead(report) {
+  const [outcome, style] = OUTCOMES[report.outcome] || [report.outcome, ""];
+  const problems = (report.problems || []).length;
+  const note = report.error ? `<div class="small bad-text ellipsis">${esc(report.error)}</div>`
+    : problems ? `<div class="small warn-text">⚠️ ${plural(problems, "problema", "problemas")}</div>`
+    : report.outcome === "ok" ? `<div class="small muted">Ninguna fuente ha dado problemas · ${plural(report.authors_checked, "autor", "autores")}</div>` : "";
+  return `<div class="report-head"><span class="title">${esc(shortDate(report.started.replace("T", " ")))}</span>
+      <span class="small ${style}">${esc(outcome)} · ${esc(report.minutes)} min</span></div>
+    <div class="small">${esc(reportNumbers(report))}</div>${note}`;
+}
+
+function reportBody(report) {
+  let html = "";
+  if (report.error) html += `<p class="bad-text small">${esc(report.error)}</p>`;
+  html += `<p class="small muted">${esc(plural(report.authors_checked, "autor revisado", "autores revisados"))}${
+    report.in_calibre != null ? ` · ${esc(report.in_calibre)} subidas a Calibre` : ""}</p>`;
+  const downloads = report.downloads || [];
+  if (downloads.length) {
+    html += `<h3>Descargadas</h3><ul class="list compact">${downloads.map(work => `<li>
+      <div class="title">${esc(work.title)}</div>
+      <div class="muted small">${esc([work.year || "s. f.", (work.authors || []).join(", "), work.source].join(" · "))}</div>
+      <div class="muted small">${esc(work.calibre)}</div></li>`).join("")}</ul>`;
+  }
+  const authors = report.authors || [];
+  if (authors.length) {
+    html += `<h3>Autores con novedades</h3><ul class="list compact">${authors.map(author => `<li>
+      <span class="title">${esc(author.name)}</span><div class="small ${author.failed ? "bad-text" : "muted"}">${author.failed
+        ? "Ha fallado (mira el log)" : esc(`${plural(author.new, "nueva", "nuevas")} · ${plural(author.downloaded, "descargada", "descargadas")} · ${author.pending} sin archivo`)}</div>
+      </li>`).join("")}</ul>`;
+  } else if (report.authors_checked) {
+    html += `<p class="small muted">Ningún autor tiene obras nuevas ni descargas.</p>`;
+  }
+  const problems = report.problems || [];
+  if (problems.length) {
+    html += `<h3>Problemas</h3><ul class="list compact">${problems.map(problem =>
+      `<li class="small">${esc(problem.text)}${problem.times > 1 ? ` <span class="muted">(×${problem.times})</span>` : ""}</li>`).join("")}</ul>`;
+  }
+  return html;
+}
+
+let dailyWasRunning = null;
+
 function renderDaily() {
   view.innerHTML = `${backLink()}<h1>Revisión diaria</h1><p class="small" id="daily-state"></p>
-    <pre class="log" id="daily-log"></pre>
-    <div class="actions"><button id="daily-now">Hacer la revisión ahora</button></div>`;
+    <div class="actions tight"><button id="daily-now">Hacer la revisión ahora</button></div>
+    <h2>Informes</h2><div id="daily-reports"><p class="muted">Cargando…</p></div>
+    <details id="daily-log-box"><summary>Log de la última revisión<span class="chevron">›</span></summary>
+      <div class="inner"><pre class="log" id="daily-log"></pre></div></details>`;
   document.getElementById("daily-now").addEventListener("click", () =>
     startJob("daily", {}, "¿Hacer ahora la revisión diaria? Mañana se hace otra vez a su hora."));
+  dailyWasRunning = !!(state.daily || {}).running;
+  // While it runs, the log is what tells what it does.
+  document.getElementById("daily-log-box").open = dailyWasRunning;
+  loadDailyReports();
   renderDailyLog();
+}
+
+async function loadDailyReports() {
+  let reports;
+  try { reports = (await api("api/daily_reports")).reports; } catch (error) {
+    const box = document.getElementById("daily-reports");
+    if (box) box.innerHTML = `<p class="bad-text">${esc(error.message)}</p>`;
+    return;
+  }
+  const box = document.getElementById("daily-reports");
+  if (!box) return;
+  if (!reports.length) {
+    box.innerHTML = `<p class="empty">Todavía no hay informes. Cada revisión deja aquí el suyo al terminar.</p>`;
+    return;
+  }
+  box.innerHTML = reports.map((report, number) => `<details class="report" ${number === 0 ? "open" : ""}>
+    <summary><div class="grow">${reportHead(report)}</div><span class="chevron">›</span></summary>
+    <div class="inner">${reportBody(report)}</div></details>`).join("");
 }
 
 function renderDailyLog() {
@@ -328,6 +408,9 @@ function renderDailyLog() {
   element.textContent = dailyText(daily);
   document.getElementById("daily-now").disabled = !!daily.running;
   showLog(document.getElementById("daily-log"), daily.log_tail || ["Todavía no hay ningún log de la revisión diaria."]);
+  // When a check ends, its report is the new first one.
+  if (dailyWasRunning && !daily.running) loadDailyReports();
+  dailyWasRunning = !!daily.running;
 }
 
 // --- Buscar ---

@@ -26,6 +26,7 @@ from languages import (LANGUAGE_NAMES, current_choice, languages_label, load_set
 from library_browser import folder_files, folders_with_files, human_size, papers_by_file, remove_files
 from manual_download import work_page
 from reviews import needs_review
+import daily_reports
 from run_lock import daily_check_running
 from storage import find_saved_lists, load_content, load_papers, set_follow, update_papers, work_key
 from update_indexes import INDEXED_SOURCES
@@ -43,6 +44,8 @@ DAILY_LOGS = LIBRARY / ".logs"
 DAILY_LAST_RUN = LIBRARY / ".daily_check.last"
 DAILY_RUN_AT = dt.time(6, 0)
 LATEST_DOWNLOADS = 15
+# The reports of the daily check shown in its page: about a month.
+DAILY_REPORTS_SHOWN = 30
 LOG_LINES_SHOWN = 400
 # The lock is asked for at most this often, however many pages are open.
 DAILY_STATE_SECONDS = 5
@@ -299,9 +302,13 @@ class Panel:
                         counts["pending"] += 1
         return json_response({
             "downloads": download_history.latest(LATEST_DOWNLOADS),
+            "daily_report": next(iter(daily_reports.latest(1)), None),
             "counts": counts,
             "languages": languages_label(),
         })
+
+    async def daily_report_list(self, request: web.Request) -> web.Response:
+        return json_response({"reports": daily_reports.latest(DAILY_REPORTS_SHOWN)})
 
     # --- doubtful works ---
 
@@ -542,6 +549,7 @@ def add_routes(app: web.Application, prefix: str, check) -> None:
         ("GET", "/static/{name}", panel.static),
         ("GET", "/api/status", panel.status),
         ("GET", "/api/home", panel.home),
+        ("GET", "/api/daily_reports", panel.daily_report_list),
         ("GET", "/api/authors", panel.find_authors),
         ("GET", "/api/author_works", panel.author_works),
         ("GET", "/api/title_results", panel.title_results),
