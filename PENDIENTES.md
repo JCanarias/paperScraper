@@ -64,6 +64,13 @@ página en tu navegador.
 - **Qué se puede hacer:** su API, con clave gratuita (biodiversitylibrary.org/getapikey), da el identificador de la copia de Internet Archive, de donde se descarga el PDF.
 - **CORE**, que tenía el mismo problema, ya se resuelve sin clave: su API dice de qué repositorio sacó cada archivo, y se descarga de allí (`pdf_finders/core.py`). Con `CORE_API_KEY` responde a más peticiones seguidas.
 
+### DOAB / OAPEN (lo que falta)
+- **Los libros de OAPEN posteriores a finales de 2024:** no están en la copia de Internet Archive. OAPEN tiene bloqueada nuestra IP desde las pruebas.
+  - **Qué se puede hacer:** escribir a OAPEN (DOAB: oacontact@operas.atlassian.net; OAPEN: s.sali@oapen.org) y pedir que levanten el bloqueo, explicando que es un uso personal y lento.
+- **Solo el primer autor:** el catálogo que usamos (KBART) solo trae el primer autor o editor de cada libro.
+  - **Qué se puede hacer:** usar su CSV completo (`DOAB.csv`, más grande), que trae todos los autores.
+- **JSTOR y Project MUSE:** se excluyen porque sus condiciones prohíben descargar con programas.
+
 ## Fuentes nuevas por revisar
 
 La lista de fuentes propuestas, con su valoración: [SOURCES_TO_CHECK.md](SOURCES_TO_CHECK.md).
