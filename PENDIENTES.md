@@ -59,16 +59,10 @@ página en tu navegador.
 
 ## Fuentes que no se pueden automatizar del todo
 
-### Biodiversity Heritage Library y CORE
-- **Qué pasa:** sus PDFs están detrás de una verificación de Cloudflare que no deja pasar ni al navegador real (125 obras pendientes en noviembre de 2026: 91 de Darwin en BHL). Su robots.txt sí permite descargar.
-- **Qué se puede hacer:** las dos tienen API con clave gratuita. BHL: biodiversitylibrary.org/getapikey; su API da también el identificador de la copia de Internet Archive, de donde se descarga el PDF. CORE: core.ac.uk/services/api (`CORE_API_KEY`).
-
-### DOAB / OAPEN (lo que falta)
-- **Los libros de OAPEN posteriores a finales de 2024:** no están en la copia de Internet Archive. OAPEN tiene bloqueada nuestra IP desde las pruebas.
-  - **Qué se puede hacer:** escribir a OAPEN (DOAB: oacontact@operas.atlassian.net; OAPEN: s.sali@oapen.org) y pedir que levanten el bloqueo, explicando que es un uso personal y lento.
-- **Solo el primer autor:** el catálogo que usamos (KBART) solo trae el primer autor o editor de cada libro.
-  - **Qué se puede hacer:** usar su CSV completo (`DOAB.csv`, más grande), que trae todos los autores.
-- **JSTOR y Project MUSE:** se excluyen porque sus condiciones prohíben descargar con programas.
+### Biodiversity Heritage Library
+- **Qué pasa:** sus PDFs están detrás de una verificación de Cloudflare que no deja pasar ni al navegador real (91 obras de Darwin pendientes en noviembre de 2026). Su robots.txt sí permite descargar.
+- **Qué se puede hacer:** su API, con clave gratuita (biodiversitylibrary.org/getapikey), da el identificador de la copia de Internet Archive, de donde se descarga el PDF.
+- **CORE**, que tenía el mismo problema, ya se resuelve sin clave: su API dice de qué repositorio sacó cada archivo, y se descarga de allí (`pdf_finders/core.py`). Con `CORE_API_KEY` responde a más peticiones seguidas.
 
 ## Fuentes nuevas por revisar
 

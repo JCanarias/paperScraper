@@ -8,6 +8,7 @@ import truststore
 
 import browser_session
 import mdz
+from pdf_finders.core import core_output_id, source_urls
 from metadata import write_metadata
 from models import Paper
 
@@ -91,6 +92,17 @@ def download_file(url: str, paper: Paper, folder: Path) -> None:
             raise ValueError("la Biblioteca de Múnich no ha dado un PDF")
         save_file(content, "pdf", paper, folder)
         return
+    # CORE's copy can't be reached; the repository it came from usually can.
+    output_id = core_output_id(url)
+    if output_id:
+        for source_url in source_urls(output_id):
+            try:
+                download_file(source_url, paper, folder)
+                return
+            except Exception:
+                continue
+        raise ValueError("ni CORE ni el repositorio de donde lo sacó dan el archivo")
+
     content, page, page_url = fetch(url)
 
     # Repositories and journals often link to the work's page instead of its file; that page
@@ -164,7 +176,13 @@ def pdf_link_in_html(page: str, page_url: str) -> str | None:
         if re.search(r'name=["\'](?:citation_pdf_url|bepress_citation_pdf_url|eprints\.document_url)["\']', tag, re.I):
             link = re.search(r'content=["\']([^"\']+)["\']', tag, re.I)
             if link:
-                return urljoin(page_url, html.unescape(link.group(1)))
+                address = urlparse(urljoin(page_url, html.unescape(link.group(1))))
+                # Some repositories (DSpace 7: Valencia) give their server's inner address
+                # ("http://localhost:4000/bitstreams/..."): the same path, on the page's website.
+                if address.hostname in ("localhost", "127.0.0.1"):
+                    page = urlparse(page_url)
+                    address = address._replace(scheme=page.scheme, netloc=page.netloc)
+                return address.geturl()
     return None
 
 

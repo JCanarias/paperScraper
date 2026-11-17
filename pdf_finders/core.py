@@ -79,3 +79,47 @@ def normalize(title: str) -> str:
     title = "".join(character for character in title if not unicodedata.combining(character))
     title = re.sub(r"[^\w\s]", " ", title.lower())
     return " ".join(title.split())
+
+
+# CORE's own file links (core.ac.uk/download/123.pdf) are behind a Cloudflare check that not even a
+# real browser passes. Its API, also without a key, says which repository each file came from.
+CORE_DOWNLOAD_LINK = re.compile(r"core\.ac\.uk/download/(?:pdf/)?(\d+)")
+# Without a key CORE answers few requests in a row: a calm pace.
+SECONDS_BETWEEN_RECORDS = 6
+HONEST_HEADERS = {"User-Agent": "paperScraper/1.0 (https://github.com/JCanarias/paperScraper)"}
+# Without a key CORE can ask to wait for a long time: past this, it is left for the rest of the run.
+LONGEST_WAIT_SECONDS = 60
+_last_record = 0.0
+_given_up = False
+
+
+def core_output_id(url: str) -> str | None:
+    match = CORE_DOWNLOAD_LINK.search(url)
+    return match.group(1) if match else None
+
+
+def source_urls(output_id: str) -> list[str]:
+    """The addresses of the work in the repository where CORE found it."""
+    global _last_record, _given_up
+    if _given_up:
+        return []
+    headers = dict(HONEST_HEADERS)
+    if CORE_API_KEY:
+        headers["Authorization"] = f"Bearer {CORE_API_KEY}"
+    for _ in range(MAX_ATTEMPTS):
+        wait = _last_record + SECONDS_BETWEEN_RECORDS - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _last_record = time.monotonic()
+        response = requests.get(f"{CORE_API_URL}/outputs/{output_id}", headers=headers, timeout=TIMEOUT_SECONDS)
+        if response.status_code == TOO_MANY_REQUESTS:
+            wait = int(response.headers.get("Retry-After", DEFAULT_WAIT_SECONDS))
+            if wait > LONGEST_WAIT_SECONDS:
+                break
+            time.sleep(wait)
+            continue
+        response.raise_for_status()
+        return [url for url in response.json().get("sourceFulltextUrls") or [] if "core.ac.uk" not in url]
+    _given_up = True
+    print("  Aviso: CORE no responde a más peticiones; sus copias se dejan para otro día.")
+    return []
