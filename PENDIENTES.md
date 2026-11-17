@@ -22,7 +22,9 @@ Las webs que ponen una verificación de Cloudflare a los programas se abren con 
 | PhilArchive | Cosecha OAI-PMH a una copia local, y para cada obra encontrada, la copia que conoce OpenAlex | Filosofía en abierto que también está publicada en otro sitio |
 | Biblioteca Virtual Miguel de Cervantes | SPARQL de BVMC Labs (`data.cervantesvirtual.com/bvmc-lod/repositories/data`); los PDF, con el navegador | Obras con PDF, buscadas por autor o título |
 | Páginas de las copias en abierto (OpenAlex) | Para cada copia en abierto sin enlace al PDF, su página, de la que se saca `citation_pdf_url`; "Reintentar las pendientes" pide a OpenAlex los enlaces de hoy de las pendientes | Revistas OJS (Complutenses, CSIC, RACO, revistas universitarias) y repositorios |
-| Webs con la comprobación de Cloudflare | Si una web responde con ella (o con su 403), se abre con el navegador; si bloquea del todo, no se le vuelve a preguntar en esa ejecución | TDX y RACO, entre otras, sin tener que apuntarlas |
+| Webs con la comprobación de Cloudflare | Si una web responde con ella (o con su 403), se abre con el navegador; si bloquea del todo, o el navegador no la pasa, no se le vuelve a preguntar en esa ejecución | TDX y RACO, entre otras, sin tener que apuntarlas |
+| Otras comprobaciones | Anubis y Zenodo: se repite la petición con el nombre del programa, que dejan pasar. La de Amazon (De Gruyter), la de PubMed Central y la de la Universidad de Chile: con el navegador | Repositorios de Valencia, Salamanca, UPM, Humboldt; PUCP, IMPAN, PMC, De Gruyter |
+| Biblioteca Digital de Múnich (MDZ) | Sus enlaces (de Europeana, sobre todo) llevan el número del libro; el navegador abre su página de descarga, marca que se ha leído el aviso de derechos (uso libre, no comercial), pulsa "WEITER" y descarga el PDF del libro entero. Un libro cada 30 s | Libros antiguos enteros (Kant, Fichte, Segner): de 1 MB a más de 150 MB |
 | Revistas de la Universidad de Navarra | Los enlaces de OpenAlex, abiertos con el navegador, que hace clic en su casilla de Turnstile | Anuario Filosófico, Scripta Theologica... Pasa casi siempre en unos 30 s; si un día no, se reintenta otro |
 | Europeana | API con `EUROPEANA_API_KEY` (la clave va en el parámetro `wskey`) | Solo obras de dominio público o con licencia CC; el archivo, o la página de la obra en su biblioteca |
 | Calibre | API del servidor de contenido | Marca lo que ya tienes y sube lo nuevo |
@@ -54,11 +56,6 @@ página en tu navegador.
 ### Google Books
 - **Falta:** una clave gratuita, `GOOGLE_BOOKS_API_KEY` en `.env` (console.cloud.google.com → API "Books API"). Sin clave, todas las peticiones comparten una cuota diaria mundial que siempre está gastada ("429 Quota exceeded"), así que sin clave la fuente no se usa.
 - **Por qué a mano:** sus condiciones y su robots.txt prohíben descargar con programas. Se guarda el enlace de Google, y sus obras pasan por la revisión de obras dudosas.
-
-### Biblioteca Digital de Múnich (MDZ, digitale-sammlungen.de)
-- **Qué hay:** OpenAlex y otras fuentes enlazan su visor o imágenes sueltas de páginas (Segner, Kant, Fichte: 57 obras pendientes en noviembre de 2026).
-- **Por qué a mano:** su servicio de PDF (download.digitale-sammlungen.de) prohíbe todo programa en su robots.txt, y pide aceptar el aviso de derechos. En el visor, "Download Options" → "PDF/DaFo".
-- **Qué se puede hacer:** que el enlace a mano lleve al visor de la obra (los enlaces viejos de bsb-muenchen-digital.de acaban en la portada).
 
 ## Fuentes que no se pueden automatizar del todo
 

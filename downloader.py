@@ -7,6 +7,7 @@ import requests
 import truststore
 
 import browser_session
+import mdz
 from metadata import write_metadata
 from models import Paper
 
@@ -83,6 +84,13 @@ def is_downloaded(paper: Paper, folder: Path) -> bool:
 
 
 def download_file(url: str, paper: Paper, folder: Path) -> None:
+    # The Munich library makes its PDFs on request, through a form (mdz.py).
+    if mdz.is_mdz_link(url):
+        content = mdz.download_pdf(url)
+        if file_extension(content) is None:
+            raise ValueError("la Biblioteca de Múnich no ha dado un PDF")
+        save_file(content, "pdf", paper, folder)
+        return
     content, page, page_url = fetch(url)
 
     # Repositories and journals often link to the work's page instead of its file; that page

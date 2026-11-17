@@ -1,6 +1,7 @@
 """A real Chrome for the websites that show a "checking your browser" page (Cloudflare and the like)
 to every program: Cervantes, the BNE, Gallica, HathiTrust, the journals of the Universidad de Navarra;
-and any other website whose answer is that check (downloader.py: TDX, RACO...).
+and any other website whose answer is that check (downloader.py: TDX, RACO...). It also fills in
+pages as a person would: the Munich library's download form (mdz.py).
 
 A plain request gets that page instead of the answer. Copying the browser's cookies into `requests`
 isn't enough (those websites also tell `requests` apart by how it connects), and they block fetch()
@@ -25,6 +26,8 @@ PASS_TIMEOUT_SECONDS = 120
 SECONDS_BETWEEN_CLICKS = 12
 TURNSTILE_BOX = ".cf-turnstile, div[class*=turnstile]"
 DOWNLOAD_TIMEOUT_SECONDS = 300
+# A big file (a whole book) can take longer: the wait goes on while it keeps growing, up to this.
+LONGEST_DOWNLOAD_SECONDS = 1800
 PAGE_BUILD_SECONDS = 15
 # A file starts downloading within this time after the page has passed the check; if not, it's a page.
 DOWNLOAD_START_SECONDS = 8
@@ -70,6 +73,11 @@ def get_page(url: str, wait_for: str | None = None) -> str:
     return xml or driver.page_source
 
 
+def open_page(url: str):
+    """The browser, on the page at the address once past its check, to act on it as a person would (mdz.py)."""
+    return _open(url)
+
+
 def download(url: str) -> tuple[bytes | None, str]:
     """The file at the address, or None and the source of the page shown instead."""
     _new_download_folder(_get_driver())
@@ -79,8 +87,7 @@ def download(url: str) -> tuple[bytes | None, str]:
 
 def _new_download_folder(driver) -> None:
     """Each download gets its own folder. Some websites send their file twice (De Gruyter), and the
-    second copy can arrive later: in the old folder, it can't be taken for
-    the next work's file."""
+    second copy can arrive later: in the old folder, it can't be taken for the next work's file."""
     global _download_folder
     # Leave the last page first: while it is open it can still start a download.
     driver.get("about:blank")
@@ -94,9 +101,14 @@ def _new_download_folder(driver) -> None:
 
 
 def _wait_for_file(driver, url: str) -> tuple[bytes | None, str]:
-    started = time.monotonic()
-    while time.monotonic() - started < DOWNLOAD_TIMEOUT_SECONDS:
+    started = last_growth = time.monotonic()
+    size = 0
+    while (time.monotonic() - last_growth < DOWNLOAD_TIMEOUT_SECONDS
+           and time.monotonic() - started < LONGEST_DOWNLOAD_SECONDS):
         files = list(_download_folder.iterdir())
+        current = _folder_size()
+        if current != size:
+            size, last_growth = current, time.monotonic()
         finished = [f for f in files if not f.name.endswith(".crdownload") and f.stat().st_size > 0]
         if finished and not any(f.name.endswith(".crdownload") for f in files):
             content = finished[0].read_bytes()
@@ -106,6 +118,17 @@ def _wait_for_file(driver, url: str) -> tuple[bytes | None, str]:
             return None, driver.page_source
         time.sleep(0.5)
     raise BrowserError(f"la descarga de {url} no ha terminado a tiempo")
+
+
+def _folder_size() -> int:
+    size = 0
+    for file in _download_folder.iterdir():
+        try:
+            size += file.stat().st_size
+        except OSError:
+            # Chrome renames the file when it ends.
+            pass
+    return size
 
 
 def quit_browser() -> None:
