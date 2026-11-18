@@ -3,6 +3,7 @@ python-dotenv
 cloudscraper
 questionary
 pikepdf
+Pillow
 truststore
 lxml
 selenium

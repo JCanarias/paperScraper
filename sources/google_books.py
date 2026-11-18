@@ -10,7 +10,8 @@ A copy in Internet Archive used to be looked for by the first author's name alon
 file of any other book of that author: it is no longer done (Internet Archive is searched by itself).
 
 This source respects Google's ToS by not bypassing protections or downloading
-restricted content. Public domain books are sourced from Internet Archive instead.
+restricted content. Public domain books are sourced from Internet Archive instead: the copy of
+the same Google scan, when it is there (internet_archive_copies.py).
 """
 import os
 from typing import Optional

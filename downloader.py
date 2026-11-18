@@ -7,6 +7,8 @@ import requests
 import truststore
 
 import browser_session
+import gallica_pages
+import internet_archive_copies
 import mdz
 from pdf_finders.core import core_output_id, source_urls
 from metadata import write_metadata
@@ -38,9 +40,13 @@ HONEST_HOSTS = ("ws-export.wmcloud.org", "wikisource.org", "wikimedia.org")
 # university repositories: Valencia, Salamanca, UPM...), PubMed Central, the Universidad de Chile.
 BROWSER_CHECK_TITLES = ("making sure you&#39;re not a bot", "making sure you're not a bot", "preparing to download",
                         "checking your browser", "verificando acceso")
-# Their works are only downloaded by hand: Gallica and the BNE block the PDFs to programs, and
-# HathiTrust's and Google's terms forbid downloading with them. Their links are the pages opened for the user.
-MANUAL_ONLY_HOSTS = ("gallica.bnf.fr", "bnedigital.bne.es", "hathitrust.org", "books.google.com", "books.google.es")
+# Their works are only downloaded by hand: the BNE blocked the program. Their links are the pages opened
+# for the user. Gallica's books are made from the images of their pages (gallica_pages.py), and HathiTrust's
+# and Google's are looked for in Internet Archive (internet_archive_copies.py).
+MANUAL_ONLY_HOSTS = ("bnedigital.bne.es",)
+# Their other links (a PDF, a catalogue record...) are not followed: Gallica blocks the browser for the rest
+# of the run when it asks for a PDF, and HathiTrust and Google don't let programs download.
+NOT_FOLLOWED_HOSTS = ("gallica.bnf.fr", "hathitrust.org", "books.google.com", "books.google.es")
 
 
 def headers_for(url: str) -> dict[str, str]:
@@ -92,6 +98,20 @@ def download_file(url: str, paper: Paper, folder: Path) -> None:
             raise ValueError("la Biblioteca de Múnich no ha dado un PDF")
         save_file(content, "pdf", paper, folder)
         return
+    if gallica_pages.is_gallica_link(url):
+        save_file(gallica_pages.download_pdf(url), "pdf", paper, folder)
+        return
+    # HathiTrust and Google don't let programs download; the same scan in Internet Archive does.
+    if internet_archive_copies.is_hathitrust_link(url) or internet_archive_copies.is_google_books_link(url):
+        for copy_url in internet_archive_copies.copy_urls(url):
+            try:
+                download_file(copy_url, paper, folder)
+                return
+            except Exception:
+                continue
+        raise ValueError("no hay copia del libro en Internet Archive")
+    if (urlparse(url).hostname or "").endswith(NOT_FOLLOWED_HOSTS):
+        raise ValueError("este enlace solo se abre a mano")
     # CORE's copy can't be reached; the repository it came from usually can.
     output_id = core_output_id(url)
     if output_id:

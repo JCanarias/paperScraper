@@ -25,6 +25,8 @@ Las webs que ponen una verificación de Cloudflare a los programas se abren con 
 | Webs con la comprobación de Cloudflare | Si una web responde con ella (o con su 403), se abre con el navegador; si bloquea del todo, o el navegador no la pasa, no se le vuelve a preguntar en esa ejecución | TDX y RACO, entre otras, sin tener que apuntarlas |
 | Otras comprobaciones | Anubis y Zenodo: se repite la petición con el nombre del programa, que dejan pasar. La de Amazon (De Gruyter), la de PubMed Central y la de la Universidad de Chile: con el navegador | Repositorios de Valencia, Salamanca, UPM, Humboldt; PUCP, IMPAN, PMC, De Gruyter |
 | Biblioteca Digital de Múnich (MDZ) | Sus enlaces (de Europeana, sobre todo) llevan el número del libro; el navegador abre su página de descarga, marca que se ha leído el aviso de derechos (uso libre, no comercial), pulsa "WEITER" y descarga el PDF del libro entero. Un libro cada 30 s | Libros antiguos enteros (Kant, Fichte, Segner): de 1 MB a más de 150 MB |
+| Gallica | Su API IIIF (oficial, de acceso libre salvo abuso), con el navegador: el programa pide la imagen de cada página (1.300 px de ancho, una tras otra con pausa; unos 4 s por página, 15 min un libro de 230) y las junta en un PDF. Hasta 8 libros por ejecución; el resto, otro día | Libros de dominio público escaneados, sin capa de texto |
+| HathiTrust y Google Books | No dejan descargar a programas (HathiTrust lo bloquea). Se busca la misma copia en Internet Archive: para Google, por el identificador del escaneo; para HathiTrust, por el número OCLC de su catálogo, con el mismo año y sin ser un tomo suelto | En una muestra, 17 de 53 libros de HathiTrust tenían copia |
 | Revistas de la Universidad de Navarra | Los enlaces de OpenAlex, abiertos con el navegador, que hace clic en su casilla de Turnstile | Anuario Filosófico, Scripta Theologica... Pasa casi siempre en unos 30 s; si un día no, se reintenta otro |
 | Europeana | API con `EUROPEANA_API_KEY` (la clave va en el parámetro `wskey`) | Solo obras de dominio público o con licencia CC; el archivo, o la página de la obra en su biblioteca |
 | Calibre | API del servidor de contenido | Marca lo que ya tienes y sube lo nuevo |
@@ -39,10 +41,6 @@ página en tu navegador.
 - **Por qué a mano:** el 16 de noviembre de 2026, tras unas pocas pruebas de descarga de PDF desde `bnedigital.bne.es`, su sistema de seguridad bloqueó el acceso ("Página de bloqueo"). No se vuelve a intentar.
 - **Qué se puede hacer:** escribir a bnelab@bne.es y preguntar si hay una forma permitida de descargar los documentos de dominio público con un programa.
 
-### Gallica
-- **Qué hay:** su buscador SRU, abierto con el navegador. Se guardan los libros impresos en dominio público.
-- **Por qué a mano:** Cloudflare bloquea los PDF a los programas ("Attention Required"): es un bloqueo, no una verificación que se pueda pasar.
-
 ### PhilArchive (los PDFs propios)
 - **Ahora:** solo se descargan las obras que tienen otra copia en otro sitio (en una muestra, el 26 % tenía PDF fuera de PhilPapers y el 59 %, DOI).
 - **Por qué no el resto:** sus PDFs están detrás de Cloudflare. Sus condiciones prohíben descargarlos con programas "salvo permiso expreso por escrito".
@@ -50,12 +48,12 @@ página en tu navegador.
 
 ### HathiTrust
 - **Qué hay:** su catálogo, abierto con el navegador (también su API pasa por Cloudflare). Se guardan los libros con un solo volumen en "Full view" desde España (aproximadamente, anteriores a 1901).
-- **Por qué a mano:** su política de uso prohíbe automatizar descargas.
+- **Por qué a mano:** su política de uso prohíbe automatizar descargas, y bloquea la descarga al navegador del programa ("Blocked from HathiTrust"). Los que tienen la misma edición en Internet Archive se bajan de allí.
 - **Qué se puede hacer:** con cuenta de la Universidad Complutense (miembro de HathiTrust), descargar a mano libros enteros. Muchos de sus escaneos están en Internet Archive, que el programa ya usa.
 
 ### Google Books
 - **Falta:** una clave gratuita, `GOOGLE_BOOKS_API_KEY` en `.env` (console.cloud.google.com → API "Books API"). Sin clave, todas las peticiones comparten una cuota diaria mundial que siempre está gastada ("429 Quota exceeded"), así que sin clave la fuente no se usa.
-- **Por qué a mano:** sus condiciones y su robots.txt prohíben descargar con programas. Se guarda el enlace de Google, y sus obras pasan por la revisión de obras dudosas.
+- **Por qué a mano:** sus condiciones y su robots.txt prohíben descargar con programas. Se guarda el enlace de Google, y sus obras pasan por la revisión de obras dudosas; si el mismo escaneo está en Internet Archive, se baja de allí.
 
 ## Fuentes que no se pueden automatizar del todo
 

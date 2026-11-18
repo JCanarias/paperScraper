@@ -1,7 +1,7 @@
 """A real Chrome for the websites that show a "checking your browser" page (Cloudflare and the like)
 to every program: Cervantes, the BNE, Gallica, HathiTrust, the journals of the Universidad de Navarra;
 and any other website whose answer is that check (downloader.py: TDX, RACO...). It also fills in
-pages as a person would: the Munich library's download form (mdz.py).
+pages as a person would: the Munich library's download form (mdz.py), Gallica's page images (gallica_pages.py).
 
 A plain request gets that page instead of the answer. Copying the browser's cookies into `requests`
 isn't enough (those websites also tell `requests` apart by how it connects), and they block fetch()

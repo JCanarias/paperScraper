@@ -3,7 +3,7 @@
 Its catalogue can be searched with SRU, but every request to gallica.bnf.fr goes through
 Cloudflare's check, so the search runs in the browser (browser_session.py).
 Gallica refuses to make PDFs for programs (Cloudflare blocks them outright, it isn't a check to
-pass), so its works are only found here and downloaded by hand ("Descargar a mano las pendientes").
+pass), so the PDF is made from the images of the book's pages, given by its IIIF API (gallica_pages.py).
 """
 import html
 import re

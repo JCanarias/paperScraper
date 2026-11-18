@@ -2,9 +2,9 @@
 
 Every request to hathitrust.org (its API included) goes through Cloudflare's check, so the catalogue
 search runs in the browser (browser_session.py) and its result page is read.
-HathiTrust's terms of use forbid downloading its books with programs, so they are only found here
-and downloaded by hand ("Descargar a mano las pendientes"). Many of its scans are also in
-Internet Archive, which the program already searches.
+HathiTrust's terms of use forbid downloading its books with programs (and it blocks them), so the
+same edition is downloaded from Internet Archive when it is there (internet_archive_copies.py); the
+rest are downloaded by hand ("Descargar a mano las pendientes").
 """
 import html
 import re
