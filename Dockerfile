@@ -2,7 +2,8 @@
 # The code isn't copied: it is mounted (.:/app), so a `git pull` and a restart are enough.
 FROM python:3.11-slim-bookworm
 
-# Google Chrome (Sci-Hub), an invisible screen for it (Xvfb) and the web terminal (ttyd + tmux).
+# Google Chrome (Sci-Hub), an invisible screen for it (Xvfb), the web terminal (ttyd + tmux), and DjVuLibre
+# with tiff2pdf, which turn the DjVu books into PDF (djvu_pdf.py).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
  && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
@@ -11,6 +12,7 @@ RUN apt-get update \
     > /etc/apt/sources.list.d/google-chrome.list \
  && apt-get update \
  && apt-get install -y --no-install-recommends google-chrome-stable xvfb tmux tzdata \
+    djvulibre-bin libtiff-tools \
  && rm -rf /var/lib/apt/lists/*
 
 # Debian bookworm has no ttyd package; its project publishes a static binary.

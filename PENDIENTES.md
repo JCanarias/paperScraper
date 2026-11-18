@@ -16,10 +16,10 @@ Las webs que ponen una verificación de Cloudflare a los programas se abren con 
 | Internet Archive | API | Libros escaneados, incluidas muchas copias de Google Books |
 | Gutenberg | API Gutendex | Clásicos en EPUB |
 | Wikisource | API de MediaWiki y su exportador de EPUB | Clásicos en EPUB, primero en español |
-| Wikimedia Commons | API de MediaWiki (búsqueda de archivos PDF); cada archivo debe decir en su campo de autor que es suyo | Libros escaneados de dominio público en PDF (los DjVu, que son muchos, todavía no) |
+| Wikimedia Commons | API de MediaWiki (búsqueda de archivos PDF y DjVu); cada archivo debe decir en su campo de autor que es suyo. Los DjVu se convierten a PDF con DjVuLibre (en la imagen de la torre; en Windows no se buscan): en blanco y negro a la resolución del escaneo (CCITT G4, unos 40 KB por página) o, si tienen capas de color, una imagen JPEG por página (unos 240 KB) | Libros escaneados de dominio público (Kant, Hegel, Darwin, Pascal: decenas de DjVu cada uno) |
 | DOAB / OAPEN | Catálogo diario descargable (CC0), copia local que se renueva cada semana | Unos 96.000 libros académicos en abierto; descarga desde la editorial o desde la copia de Internet Archive |
 | Dialnet | Cosecha OAI-PMH del área de Humanidades a una copia local | Artículos en español con texto completo en Dialnet |
-| PhilArchive | Cosecha OAI-PMH a una copia local, y para cada obra encontrada, la copia que conoce OpenAlex | Filosofía en abierto que también está publicada en otro sitio |
+| PhilArchive | Cosecha OAI-PMH a una copia local; para cada obra, primero la copia que conoce OpenAlex y después su propio PDF (`philarchive.org/archive/<id>`), con el navegador por Cloudflare. Hay permiso escrito para descargarlos (noviembre de 2026) | Filosofía en abierto |
 | Biblioteca Virtual Miguel de Cervantes | SPARQL de BVMC Labs (`data.cervantesvirtual.com/bvmc-lod/repositories/data`); los PDF, con el navegador | Obras con PDF, buscadas por autor o título |
 | Páginas de las copias en abierto (OpenAlex) | Para cada copia en abierto sin enlace al PDF, su página, de la que se saca `citation_pdf_url`; "Reintentar las pendientes" pide a OpenAlex los enlaces de hoy de las pendientes | Revistas OJS (Complutenses, CSIC, RACO, revistas universitarias) y repositorios |
 | Webs con la comprobación de Cloudflare | Si una web responde con ella (o con su 403), se abre con el navegador; si bloquea del todo, o el navegador no la pasa, no se le vuelve a preguntar en esa ejecución | TDX y RACO, entre otras, sin tener que apuntarlas |
@@ -40,11 +40,6 @@ página en tu navegador.
 - **Qué hay:** su lista de dominio público en datos abiertos (CC BY 4.0): un ZIP de 1.930 CSV con unos 100.000 libros. Se guarda en el índice local y se renueva cada semana (con el navegador: bne.es pasa por Cloudflare).
 - **Por qué a mano:** el 16 de noviembre de 2026, tras unas pocas pruebas de descarga de PDF desde `bnedigital.bne.es`, su sistema de seguridad bloqueó el acceso ("Página de bloqueo"). No se vuelve a intentar.
 - **Qué se puede hacer:** escribir a bnelab@bne.es y preguntar si hay una forma permitida de descargar los documentos de dominio público con un programa.
-
-### PhilArchive (los PDFs propios)
-- **Ahora:** solo se descargan las obras que tienen otra copia en otro sitio (en una muestra, el 26 % tenía PDF fuera de PhilPapers y el 59 %, DOI).
-- **Por qué no el resto:** sus PDFs están detrás de Cloudflare. Sus condiciones prohíben descargarlos con programas "salvo permiso expreso por escrito".
-- **Qué se puede hacer:** escribirles (philpapers.org/help/contact.html). Pide permiso para descargar en abierto con esta herramienta personal, de poco volumen, o que la dejen pasar. Si lo dan, se añade la descarga directa.
 
 ### HathiTrust
 - **Qué hay:** su catálogo, abierto con el navegador (también su API pasa por Cloudflare). Se guardan los libros con un solo volumen en "Full view" desde España (aproximadamente, anteriores a 1901).

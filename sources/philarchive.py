@@ -1,10 +1,11 @@
 """Open access philosophy from PhilArchive (philarchive.org), the archive of PhilPapers.
 
-PhilPapers allows harvesting its catalogue through OAI-PMH, but its PDFs are behind a check
-for people and its terms forbid fetching them with programs. Many of those works also exist
-elsewhere (the journal, arXiv, a university repository...), so we keep a local copy of the
-catalogue, search it here and look each work up in OpenAlex, which knows those other copies.
-Works without any other copy are left out: they can only be downloaded by hand.
+PhilPapers allows harvesting its catalogue through OAI-PMH, so we keep a local copy of it and
+search it here. Its PDFs are behind Cloudflare's check, which the browser passes
+(browser_session.py); its terms forbid fetching them with programs without written permission,
+which the user has (November 2026). Many works also exist elsewhere (the journal, arXiv, a
+university repository...): each one is looked up in OpenAlex, which knows those other copies,
+and they are tried first; PhilArchive's own file is the last link.
 
 Each lookup is a search in OpenAlex (0.001 $ of the key's daily budget), and the daily check would
 repeat the same ones every day, so the answer is kept in the local index for LOOKUP_DAYS days.
@@ -15,7 +16,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import asdict
 
 from duplicates import title_words
-from local_index import LocalIndex
+from local_index import LocalIndex, record_to_paper
 from models import Paper
 from oai_harvest import dc_values, harvest, readable_name, year_from
 from sources.base import BookSource
@@ -24,6 +25,8 @@ from sources.openalex import OpenAlexBudgetSpent, OpenAlexSource
 
 # PhilPapers asks for at least 2 seconds between requests (Crawl-delay); the harvest waits 3.
 OAI_URL = "https://philarchive.org/oai.pl"
+# The work's file in PhilArchive (a PDF, or sometimes a Word document, which is not kept).
+ARCHIVE_URL = "https://philarchive.org/archive/{id}"
 OPENALEX_CANDIDATES = 5
 # After this, a work is looked up again: OpenAlex may know a new copy.
 LOOKUP_DAYS = 90
@@ -55,11 +58,16 @@ class PhilArchiveSource(BookSource):
     def _find_copies(self, records: list[dict]) -> list[Paper]:
         papers = []
         for record in records:
+            archive_url = ARCHIVE_URL.format(id=record["id"])
             paper = self._openalex_copy(record)
-            # A DOI is enough: the PDF finders (Unpaywall, Sci-Hub...) look for it later.
-            if paper and (paper.pdf_urls or paper.doi):
-                paper.identifiers["philarchive"] = record["id"]
-                papers.append(paper)
+            if paper:
+                # The published copy first; the PDF finders (Unpaywall, Sci-Hub...) also look for its DOI.
+                paper.pdf_urls = [*paper.pdf_urls, archive_url]
+            else:
+                paper = record_to_paper(record, self.name, "philarchive")
+                paper.pdf_urls = [archive_url]
+            paper.identifiers["philarchive"] = record["id"]
+            papers.append(paper)
         return papers
 
     def _openalex_copy(self, record: dict) -> Paper | None:

@@ -15,7 +15,8 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-BROWSER_HOSTS = ("cervantesvirtual.com", "bne.es", "gallica.bnf.fr", "hathitrust.org", "revistas.unav.edu")
+BROWSER_HOSTS = ("cervantesvirtual.com", "bne.es", "gallica.bnf.fr", "hathitrust.org", "revistas.unav.edu",
+                 "philarchive.org")
 # The check pages, by their title or by the start of their text (some keep the website's title).
 CHALLENGE_TEXTS = ("just a moment", "un momento", "verificación de seguridad", "verificación de acceso",
                    "se verifica su acceso", "attention required", "making sure you", "preparing to download",

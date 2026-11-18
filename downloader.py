@@ -7,6 +7,7 @@ import requests
 import truststore
 
 import browser_session
+import djvu_pdf
 import gallica_pages
 import internet_archive_copies
 import mdz
@@ -133,6 +134,10 @@ def download_file(url: str, paper: Paper, folder: Path) -> None:
         if pdf_link and pdf_link != url:
             content, _, _ = fetch(pdf_link)
             extension = file_extension(content)
+
+    # DjVu books (Wikimedia Commons) are kept as PDF.
+    if extension is None and djvu_pdf.is_djvu(content):
+        content, extension = djvu_pdf.to_pdf(content), "pdf"
 
     # Some links return a web page (a login, a captcha...) instead of the file.
     if extension is None:

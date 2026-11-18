@@ -28,7 +28,7 @@ Las direcciones con (?) estaban cortadas en la lista original y están completad
 | Humanities Commons (MLA) | hcommons.org | Quizá: buena parte llega por CORE y por los DOI de DataCite en OpenAlex; tiene API (InvenioRDM) |
 | MLA CORE / KC Works | works.hcommons.org | Igual que la anterior |
 | PhilPapers | philpapers.org | No sirve: sus condiciones prohíben descargar con programas sin permiso escrito |
-| PhilArchive | philarchive.org | Ya cubierta (catálogo local por OAI-PMH) |
+| PhilArchive | philarchive.org | Hecha: catálogo local por OAI-PMH y sus propios PDF (con permiso escrito, noviembre de 2026) |
 | Isidore | isidore.science | Quizá: buscador francés con API y SPARQL; reúne HAL, OpenEdition y Persée. Para autores franceses |
 | Recensio.net | recensio.net | No sirve: reseñas, casi todas en HTML |
 | Perlego, Academia.edu | — | Descartadas en la lista original (de pago / sin control de derechos) |
@@ -80,10 +80,10 @@ Las direcciones con (?) estaban cortadas en la lista original y están completad
 | DigiVatLib | digi.vatlib.it | No sirve: manuscritos en imagen |
 | Gallica | gallica.bnf.fr | Ya cubierta |
 | Münchener DigitalisierungsZentrum (MDZ) | digitale-sammlungen.de | Quizá: libros antiguos en PDF, con API; creo que también llega por Europeana |
-| Deutsche Digitale Bibliothek | deutsche-digitale-bibliothek.de | Quizá: API con clave; en parte por Europeana |
+| Deutsche Digitale Bibliothek | deutsche-digitale-bibliothek.de | Quizá: su API pide clave (comprobada el 18 de noviembre: sin ella, "NotAuthorizedException"); en parte por Europeana |
 | Polona | polona.pl | Quizá: en parte por Europeana |
 | Europeana | europeana.eu | Ya cubierta (con `EUROPEANA_API_KEY`) |
-| Library of Congress Digital Collections | loc.gov/collections | Quizá: API JSON; libros antiguos en inglés de dominio público |
+| Library of Congress Digital Collections | loc.gov/collections | No sirve ahora (comprobada el 18 de noviembre): su API responde con la comprobación de Cloudflare, que no deja pasar ni al navegador. Muchos de sus libros están en Internet Archive (colección `library_of_congress`) |
 | World Digital Library | (en loc.gov) | Igual que Library of Congress |
 | Digital Public Library of America | dp.la | Quizá: API con clave; reúne bibliotecas de EE. UU. y enlaza a ellas |
 | HathiTrust | hathitrust.org | Ya cubierta |
@@ -148,7 +148,7 @@ por sitio); el resto está sin comprobar. Se agrupan las que reciben la misma va
 
 ## Siguientes candidatas
 
-1. **Hecha (16 de noviembre), solo los PDF.** **Wikimedia Commons** (comprobada): `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=<autor> filetype:pdf&prop=imageinfo&iiprop=url|mime|size`.
+1. **Hecha (16 de noviembre; los DjVu, el 18, convertidos a PDF).** **Wikimedia Commons** (comprobada): `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=<autor> filetype:pdf&prop=imageinfo&iiprop=url|mime|size`.
    Libros escaneados en PDF y DjVu, descarga directa desde `upload.wikimedia.org`, sin Cloudflare. Con "Fichte" da
    PDF y DjVu de sus obras. Entraría como `BookSource` (búsqueda por autor y título), con el mismo User-Agent y
    ritmo que Wikisource. Calibre guarda DjVu, aunque su visor no lo abre.
@@ -254,7 +254,7 @@ por sitio); el resto está sin comprobar. Se agrupan las que reciben la misma va
 | Canadiana, BAnQ, Calisphere, Portal to Texas History, Digital Library of Georgia, Digital Commonwealth, DocSouth, dLOC, DLME | (ver lista) | Quizá: regionales; solo si se siguen autores de allí. Las de EE. UU. las reúne DPLA (primera lista) |
 | JSTOR Early Journal Content | archive.org/details/jstor_ejc | Ya cubierta: está en Internet Archive |
 | Mark Twain Project, Willa Cather Archive, Papers of Abraham Lincoln, SlaveVoyages, Lantern | (ver lista) | No sirve: ediciones en HTML o datos |
-| Wikimedia Commons | commons.wikimedia.org (API comprobada) | Hecha (solo PDF; faltan los DjVu) |
+| Wikimedia Commons | commons.wikimedia.org (API comprobada) | Hecha (PDF, y DjVu convertidos a PDF en la torre) |
 | Endangered Archives Programme | eap.bl.uk | No sirve: archivos en imagen |
 
 ## Asia, Oriente Próximo y África

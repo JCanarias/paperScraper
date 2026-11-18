@@ -8,16 +8,13 @@ manifest) and asks for each image, one after another and calmly, and the program
 PDF: a scan without text layer, as a person would get by saving the pages.
 """
 import base64
-import io
 import json
 import re
 import time
 from urllib.parse import urlparse
 
-import pikepdf
-from PIL import Image
-
 import browser_session
+from page_images import images_to_pdf
 
 GALLICA_BOOK = re.compile(r"/ark:/12148/([a-z0-9]+)")
 MANIFEST_URL = "https://gallica.bnf.fr/iiif/ark:/12148/{ark}/manifest.json"
@@ -85,27 +82,3 @@ def download_pdf(url: str) -> bytes:
         time.sleep(SECONDS_BETWEEN_PAGES)
     return images_to_pdf(pages)
 
-
-def images_to_pdf(pages: list[bytes]) -> bytes:
-    """A PDF with one JPEG per page, kept as it is (no new compression)."""
-    pdf = pikepdf.new()
-    for jpeg in pages:
-        with Image.open(io.BytesIO(jpeg)) as image:
-            width, height = image.size
-            color_space = {"L": "/DeviceGray", "CMYK": "/DeviceCMYK"}.get(image.mode, "/DeviceRGB")
-        picture = pikepdf.Stream(pdf, jpeg)
-        picture.Type, picture.Subtype = pikepdf.Name.XObject, pikepdf.Name.Image
-        picture.Width, picture.Height, picture.BitsPerComponent = width, height, 8
-        picture.ColorSpace = pikepdf.Name(color_space)
-        picture.Filter = pikepdf.Name.DCTDecode
-        # The page keeps the image's proportions, at the size of an octavo page (72 points per inch, 160 ppp).
-        page_width, page_height = width * 72 / 160, height * 72 / 160
-        page = pikepdf.Dictionary(
-            Type=pikepdf.Name.Page, MediaBox=[0, 0, page_width, page_height],
-            Resources=pikepdf.Dictionary(XObject=pikepdf.Dictionary(Im0=picture)),
-            Contents=pikepdf.Stream(pdf, f"q {page_width:.2f} 0 0 {page_height:.2f} 0 0 cm /Im0 Do Q".encode()),
-        )
-        pdf.pages.append(pikepdf.Page(page))
-    output = io.BytesIO()
-    pdf.save(output)
-    return output.getvalue()
