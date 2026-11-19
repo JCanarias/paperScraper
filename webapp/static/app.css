@@ -227,3 +227,29 @@ details.report > summary .title { font-weight: 600; }
 details[open] > summary .chevron { transform: rotate(90deg); }
 .chevron { transition: transform .15s; }
 h3 { font-size: .9rem; margin: 12px 0 4px; }
+
+/* What a task is doing: its numbers, a bar and the latest works (task_progress.py). */
+.accent-text { color: var(--accent); }
+.progress h3 { margin-top: 14px; }
+.progress-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.progress .step { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; }
+.progress .current { margin: 4px 0 0 18px; overflow-wrap: anywhere; }
+.bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 10px; }
+.bar > span { display: block; height: 100%; border-radius: 4px; background: var(--accent); transition: width .4s; }
+.bar-text { margin-top: 4px; }
+.bar-text:empty { display: none; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; margin-top: 12px; }
+.tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: 10px;
+        background: var(--bg); color: var(--muted); font-size: .78rem; text-align: center; }
+.tile-number { font-size: 1.3rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.sources { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.sources li { display: grid; grid-template-columns: minmax(0, 9em) 1fr auto; align-items: center; gap: 8px; font-size: .85rem; }
+.source-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.source-bar { height: 8px; }
+.source-bar > span { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 4px; }
+.source-count { font-variant-numeric: tabular-nums; min-width: 2ch; text-align: right; }
+.sources li.small { display: block; }
+.events li { display: flex; gap: 10px; align-items: flex-start; }
+.events .mark { flex: none; width: 1.2em; text-align: center; font-weight: 700; }
+.events .grow { min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .bar > span { transition: none; } }

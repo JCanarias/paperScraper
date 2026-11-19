@@ -28,6 +28,7 @@ from downloader import is_downloaded, tag_repeated_filenames
 from duplicates import merge_duplicates, same_work
 from languages import keep_chosen_languages, languages_label, paper_language_allowed, using_languages
 import sources.openalex
+import task_progress
 from models import Paper
 from reviews import apply_decisions, ask_by_telegram, doubtful, download_accepted, needs_review, set_pending
 from run_lock import take_daily_lock
@@ -108,6 +109,7 @@ def check_author(source: OpenAlexSource, papers_file: Path) -> None:
     content = load_content(papers_file)
     papers = load_papers(papers_file)
     print(f"\n{'=' * 60}\n{folder.name}\n{'=' * 60}")
+    task_progress.group(re.sub(r"\s*\([^)]*\)$", "", folder.name))
     # The languages chosen when this author was searched (or the general ones).
     with using_languages(content.get("language_choice")):
         print(f"Idiomas: {languages_label()}")
@@ -312,6 +314,7 @@ def main_check() -> None:
         if not lists:
             print('No se sigue ningún autor (menú: "Autores que seguir").')
             return
+        task_progress.groups(len(lists))
         main.connect_calibre()
         main.DOWNLOAD_LISTENERS.append(on_download)
         sources.openalex.budget_to_keep_usd = OPENALEX_BUDGET_LEFT_FOR_MENU_USD

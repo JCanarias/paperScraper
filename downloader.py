@@ -11,6 +11,7 @@ import djvu_pdf
 import gallica_pages
 import internet_archive_copies
 import mdz
+import task_progress
 from pdf_finders.core import core_output_id, source_urls
 from metadata import write_metadata
 from models import Paper
@@ -67,6 +68,7 @@ def download_paper(paper: Paper, folder: Path, urls: list[str]) -> bool:
             continue
         try:
             download_file(url, paper, folder)
+            task_progress.downloaded(paper.title, url)
             return True
         except Exception:
             continue

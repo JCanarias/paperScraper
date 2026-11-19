@@ -221,6 +221,7 @@ async function renderHome() {
     html += `<h2>${job.running ? "Tarea en marcha" : "Última tarea"}</h2><a class="card link-card" href="#/job">
       <div class="title">${esc(job.label)}</div>
       <div class="small ${job.running ? "" : result === "terminada" ? "ok-text" : "bad-text"}">${esc(capitalized(result))} · ${esc(shortDate(job.started))}</div>
+      ${job.progress && job.progress.total ? `<div class="small">${esc(progressNumbers(job.progress))}</div>` : ""}
       ${job.last_line ? `<div class="muted small ellipsis">${esc(job.last_line)}</div>` : ""}</a>`;
   }
 
@@ -276,10 +277,88 @@ function jobNextSteps(job) {
 
 function renderJob() {
   view.innerHTML = `<h1 id="job-title"></h1><p class="small" id="job-state"></p>
-    <pre class="log" id="job-log"></pre>
+    <div id="job-progress"></div>
+    <details id="job-log-box"><summary>Ver el log<span class="chevron">›</span></summary>
+      <div class="inner"><pre class="log" id="job-log"></pre></div></details>
     <div class="actions" id="job-actions"></div>`;
+  // The tasks from before the numbers existed only have their log: open.
+  document.getElementById("job-log-box").open = !(state.job || {}).progress;
   view.addEventListener("click", stopClicked);
   renderJobLog();
+}
+
+// --- What a task is doing, as numbers (task_progress.py) ---
+
+function secondsBetween(from, to) { return Math.max(0, Math.round((new Date(to) - new Date(from)) / 1000)); }
+
+function duration(seconds) {
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
+function tile(number, label, style = "") {
+  return `<div class="tile"><span class="tile-number ${style}">${number.toLocaleString("es-ES")}</span><span>${esc(label)}</span></div>`;
+}
+
+function bar(done, total, text) {
+  const share = total ? Math.min(100, Math.round(100 * done / total)) : 0;
+  return `<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}">
+      <span style="width:${share}%"></span></div><div class="muted small bar-text">${esc(text)}</div>`;
+}
+
+const EVENT_MARKS = { ok: ["✓", "ok-text"], bad: ["✗", "bad-text"], up: ["⬆", "accent-text"] };
+
+function progressHtml(progress, running) {
+  if (!progress) return "";
+  // The tower writes its local time without zone, which the browser reads as local time too.
+  const now = running ? new Date() : progress.updated;
+  let html = `<div class="card progress">`;
+  if (progress.group) {
+    const of = progress.groups_total ? `${Math.min(progress.groups_done + 1, progress.groups_total)} de ${progress.groups_total}` : "";
+    html += `<div class="progress-head"><span class="title">${esc(progress.group)}</span><span class="muted small">${esc(of)}</span></div>`;
+    if (progress.groups_total > 1) html += bar(progress.groups_done + (running ? 0 : 1), progress.groups_total, "");
+  }
+  if (running && progress.step) html += `<div class="small step"><span class="dot running"></span>${esc(progress.step)}</div>`;
+  if (running && progress.current) {
+    html += `<div class="small current"><span class="muted">Ahora:</span> ${esc(progress.current.title)}
+      <span class="muted">· ${esc(duration(secondsBetween(progress.current.since, now)))}</span>
+      ${progress.detail ? `<span class="muted block">${esc(progress.detail)}</span>` : ""}</div>`;
+  }
+  const resolved = progress.downloaded + progress.not_found;
+  if (progress.total) {
+    html += bar(resolved, progress.total, `${resolved} de ${plural(progress.total, "obra", "obras")} resueltas · ${duration(secondsBetween(progress.started, now))}`);
+  }
+  html += `<div class="tiles">${tile(progress.total, "obras")}${tile(progress.downloaded, "descargadas", "ok-text")}${
+    tile(progress.not_found, "sin archivo", progress.not_found ? "bad-text" : "")}${
+    progress.uploaded || progress.upload_failed ? tile(progress.uploaded, "subidas a Calibre", "accent-text") : ""}</div>`;
+  const sources = Object.entries(progress.by_source || {}).sort((a, b) => b[1] - a[1]);
+  if (sources.length) {
+    const most = sources[0][1];
+    html += `<h3>De dónde vienen</h3><ul class="sources">${sources.slice(0, 8).map(([name, count]) => `<li>
+      <span class="source-name">${esc(name)}</span><span class="source-bar"><span style="width:${Math.max(4, Math.round(100 * count / most))}%"></span></span>
+      <span class="source-count">${count}</span></li>`).join("")}${sources.length > 8
+      ? `<li class="muted small">y ${sources.length - 8} webs más (${sources.slice(8).reduce((sum, [, count]) => sum + count, 0)})</li>` : ""}</ul>`;
+  }
+  const events = (progress.events || []).slice(-12).reverse();
+  if (events.length) {
+    html += `<h3>Últimas</h3><ul class="list compact events">${events.map(event => {
+      const [mark, style] = EVENT_MARKS[event.kind] || ["·", "muted"];
+      return `<li><span class="${style} mark">${mark}</span><span class="grow"><span class="ellipsis block">${esc(event.title)}</span>
+        <span class="muted small">${esc(event.time)} · ${esc(event.note)}</span></span></li>`;
+    }).join("")}</ul>`;
+  }
+  return html + `</div>`;
+}
+
+function progressNumbers(progress) {
+  return `${plural(progress.downloaded, "descargada", "descargadas")} · ${progress.not_found} sin archivo · de ${progress.total}`;
+}
+
+function showProgress(element, progress, running) {
+  if (!element) return;
+  const html = progressHtml(progress, running);
+  if (element.dataset.html !== html) { element.innerHTML = html; element.dataset.html = html; }
 }
 
 async function stopClicked(event) {
@@ -300,6 +379,7 @@ function renderJobLog() {
   const actions = job.running ? `<button class="danger" id="job-stop" ${job.stopping ? "disabled" : ""}>Parar la tarea</button>` : jobNextSteps(job);
   const box = document.getElementById("job-actions");
   if (box.dataset.html !== actions) { box.innerHTML = actions; box.dataset.html = actions; }
+  showProgress(document.getElementById("job-progress"), job.progress, job.running);
   showLog(document.getElementById("job-log"), job.log || []);
 }
 
@@ -371,6 +451,7 @@ let dailyWasRunning = null;
 function renderDaily() {
   view.innerHTML = `${backLink()}<h1>Revisión diaria</h1><p class="small" id="daily-state"></p>
     <div class="actions tight"><button id="daily-now">Hacer la revisión ahora</button></div>
+    <div id="daily-progress"></div>
     <h2>Informes</h2><div id="daily-reports"><p class="muted">Cargando…</p></div>
     <details id="daily-log-box"><summary>Log de la última revisión<span class="chevron">›</span></summary>
       <div class="inner"><pre class="log" id="daily-log"></pre></div></details>`;
@@ -378,7 +459,7 @@ function renderDaily() {
     startJob("daily", {}, "¿Hacer ahora la revisión diaria? Mañana se hace otra vez a su hora."));
   dailyWasRunning = !!(state.daily || {}).running;
   // While it runs, the log is what tells what it does.
-  document.getElementById("daily-log-box").open = dailyWasRunning;
+  document.getElementById("daily-log-box").open = dailyWasRunning && !(state.daily || {}).progress;
   loadDailyReports();
   renderDailyLog();
 }
@@ -407,6 +488,8 @@ function renderDailyLog() {
   if (!element) return;
   element.textContent = dailyText(daily);
   document.getElementById("daily-now").disabled = !!daily.running;
+  // While it runs; afterwards its report says the same.
+  showProgress(document.getElementById("daily-progress"), daily.running ? daily.progress : null, true);
   showLog(document.getElementById("daily-log"), daily.log_tail || ["Todavía no hay ningún log de la revisión diaria."]);
   // When a check ends, its report is the new first one.
   if (dailyWasRunning && !daily.running) loadDailyReports();

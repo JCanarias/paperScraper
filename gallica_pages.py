@@ -14,6 +14,7 @@ import time
 from urllib.parse import urlparse
 
 import browser_session
+import task_progress
 from page_images import images_to_pdf
 
 GALLICA_BOOK = re.compile(r"/ark:/12148/([a-z0-9]+)")
@@ -77,6 +78,7 @@ def download_pdf(url: str) -> bytes:
         if status != 200 or not data:
             raise ValueError(f"Gallica no ha dado la página {len(pages) + 1} ({status})")
         pages.append(base64.b64decode(data))
+        task_progress.detail(f"Gallica: página {len(pages)} de {len(canvases)}")
         if len(pages) % PROGRESS_EVERY == 0:
             print(f"  Gallica: página {len(pages)} de {len(canvases)}", flush=True)
         time.sleep(SECONDS_BETWEEN_PAGES)

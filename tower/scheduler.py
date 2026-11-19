@@ -23,6 +23,9 @@ MAX_SLEEP_SECONDS = 600
 # Each check is also written here: `docker logs` loses everything when ./update.sh recreates the container.
 LOG_FOLDER = Path("library") / ".logs"
 LOG_DAYS = 90
+# What the check is doing, as numbers for the web panel (task_progress.py); an absolute path, since
+# daily_check.py runs from the project's folder.
+PROGRESS_FILE = (Path("library") / ".web" / "daily_progress.json").resolve()
 PANEL_TASK_WAIT_SECONDS = 60
 
 
@@ -42,7 +45,9 @@ def run_check(today: dt.date) -> None:
             log.flush()
 
         show(f"{dt.datetime.now(TIME_ZONE):%Y-%m-%d %H:%M} Revisión diaria\n")
+        PROGRESS_FILE.unlink(missing_ok=True)
         process = subprocess.Popen([sys.executable, "daily_check.py"], cwd=Path(__file__).parent.parent,
+                                   env={**os.environ, "PAPERSCRAPER_PROGRESS": str(PROGRESS_FILE)},
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    text=True, encoding="utf-8", errors="replace")
         for line in process.stdout:

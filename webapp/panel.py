@@ -27,6 +27,7 @@ from library_browser import folder_files, folders_with_files, human_size, papers
 from manual_download import work_page
 from reviews import needs_review
 import daily_reports
+import task_progress
 from run_lock import daily_check_running
 from storage import find_saved_lists, load_content, load_papers, set_follow, update_papers, work_key
 from update_indexes import INDEXED_SOURCES
@@ -40,6 +41,9 @@ WEB_FOLDER = LIBRARY / ".web"
 JOB_LOG = WEB_FOLDER / "job.log"
 JOB_STATE = WEB_FOLDER / "job.json"
 JOB_ARGUMENTS = WEB_FOLDER / "job_arguments.json"
+# What the task and the daily check are doing, as numbers (task_progress.py; the second, tower/scheduler.py).
+JOB_PROGRESS = WEB_FOLDER / "job_progress.json"
+DAILY_PROGRESS = WEB_FOLDER / "daily_progress.json"
 DAILY_LOGS = LIBRARY / ".logs"
 DAILY_LAST_RUN = LIBRARY / ".daily_check.last"
 DAILY_RUN_AT = dt.time(6, 0)
@@ -96,7 +100,7 @@ class Panel:
     def daily_state(self) -> dict:
         running = self.is_daily_running()
         log_files = sorted(DAILY_LOGS.glob("daily-*.log")) if DAILY_LOGS.exists() else []
-        state = {"running": running, "next": next_daily_run()}
+        state = {"running": running, "next": next_daily_run(), "progress": task_progress.read(DAILY_PROGRESS)}
         if not log_files:
             return state
         lines = log_files[-1].read_text(encoding="utf-8", errors="replace").splitlines()
@@ -125,6 +129,8 @@ class Panel:
             state["last_line"] = next((line.strip() for line in reversed(log) if line.strip()), "")
             if with_log:
                 state["log"] = log
+            # The daily check started from the panel writes its numbers where the one at 6:00 does.
+            state["progress"] = task_progress.read(DAILY_PROGRESS if state.get("task") == "daily" else JOB_PROGRESS)
         return state
 
     def load_job(self) -> dict | None:
@@ -164,7 +170,9 @@ class Panel:
         # In a file: a long list of choices doesn't fit in the command line.
         JOB_ARGUMENTS.write_text(json.dumps(arguments, ensure_ascii=False), encoding="utf-8")
         log = JOB_LOG.open("w", encoding="utf-8")
-        environment = {**os.environ, "PYTHONPATH": str(REPO), "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
+        JOB_PROGRESS.unlink(missing_ok=True)
+        environment = {**os.environ, "PYTHONPATH": str(REPO), "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1",
+                       task_progress.ENVIRONMENT_VARIABLE: str(JOB_PROGRESS.resolve())}
         self.process = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "webapp.jobs", task, f"@{JOB_ARGUMENTS}",
             stdout=log, stderr=asyncio.subprocess.STDOUT, stdin=asyncio.subprocess.DEVNULL, env=environment)

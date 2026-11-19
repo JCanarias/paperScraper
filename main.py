@@ -7,6 +7,7 @@ import requests
 
 import browser_session
 import download_history
+import task_progress
 from bibliography import find_works, read_references
 from calibre_library import CalibreLibrary, identifier_keys, title_keys
 from downloader import add_metadata, download_paper, downloaded_file, is_downloaded, tag_repeated_filenames
@@ -227,8 +228,17 @@ def confirm_papers_to_download(papers: list[Paper]) -> list[Paper]:
 def find_and_download_pdfs(papers: list[Paper], folder: Path) -> None:
     # First the links the search already gave us, so the finders only look for what is still missing.
     with_links = [paper for paper in papers if paper.pdf_urls and not is_downloaded(paper, folder)]
+    task_progress.works(sum(not is_downloaded(paper, folder) for paper in papers))
+    try:
+        find_and_download(papers, folder, with_links)
+    finally:
+        task_progress.not_found([paper.title for paper in papers if not is_downloaded(paper, folder)])
+
+
+def find_and_download(papers: list[Paper], folder: Path, with_links: list[Paper]) -> None:
     if with_links:
         print(f"Descargando {len(with_links)} obras con enlace ya conocido...")
+        task_progress.step(f"Descargando {len(with_links)} obras con enlace ya conocido")
         for paper in with_links:
             try_download(paper, folder, paper.pdf_urls)
 
@@ -239,6 +249,7 @@ def find_and_download_pdfs(papers: list[Paper], folder: Path) -> None:
         if type(finder).__name__ in UNREACHABLE_SOURCES:
             continue
 
+        task_progress.finder_step(finder)
         try:
             found_urls = finder.find_pdf_urls(pending)
         except Exception as error:
@@ -258,6 +269,7 @@ def find_and_download_pdfs(papers: list[Paper], folder: Path) -> None:
 
 def try_download(paper: Paper, folder: Path, urls: list[str]) -> None:
     print(f"  Descargando {paper.doi or paper.title[:MAX_TITLE_LENGTH_SHOWN]}...", end=" ", flush=True)
+    task_progress.trying(paper.title)
     downloaded = download_paper(paper, folder, urls)
     print("✓" if downloaded else "✗")
     if downloaded:
@@ -296,6 +308,7 @@ def find_books(search: Callable[[BookSource], list[Paper]]) -> list[Paper]:
         if book_source.name in UNREACHABLE_SOURCES:
             continue
         print(f"Buscando libros en {book_source.name}...", end=" ", flush=True)
+        task_progress.step(f"Buscando libros en {book_source.name}")
         try:
             found = search(book_source)
         except requests.RequestException as error:
@@ -415,6 +428,7 @@ def download_author_works(source: OpenAlexSource, selected_authors: list[Author]
     the doubtful ones wait in "Revisar obras dudosas" instead of being asked here."""
     print(f"\n{'='*60}")
     print(f"Procesando: {', '.join(author.name for author in selected_authors)}")
+    task_progress.group(main_author.name)
     print(f"{'='*60}")
 
     papers = prepare_list(find_author_works(source, selected_authors))
@@ -458,6 +472,7 @@ def download_author_works(source: OpenAlexSource, selected_authors: list[Author]
 def find_author_works(source: OpenAlexSource, profiles: list[Author]) -> list[Paper]:
     """Every work of these OpenAlex profiles (one person), and the books under their names."""
     papers: list[Paper] = []
+    task_progress.step("Buscando sus obras en OpenAlex")
     for author in profiles:
         papers += source.get_papers(author)
     openalex_count = len(papers)
@@ -595,25 +610,33 @@ def remove_files_in_calibre(papers: list[Paper], folder: Path) -> int:
 
 def upload_files(papers: list[Paper], folder: Path) -> None:
     uploaded = 0
+    task_progress.step(f"Subiendo a Calibre {len(papers)} archivos")
     for paper in papers:
         print(f"  Subiendo {paper.title[:MAX_TITLE_LENGTH_SHOWN]}...", end=" ", flush=True)
+        task_progress.trying(paper.title)
         try:
             result = send_to_calibre(paper, folder)
             if result == "uploaded":
                 uploaded += 1
                 print("✓")
+                task_progress.uploaded(paper.title, True)
             elif result == "kept":
                 uploaded += 1
                 print("✓ (Calibre no muestra el archivo; se queda también aquí)")
+                task_progress.uploaded(paper.title, True)
             else:
                 print("ya estaba")
+                task_progress.uploaded(paper.title, True, "ya estaba en Calibre")
         except requests.HTTPError as error:
             if error.response is not None and error.response.status_code == 403:
                 print("\nEl usuario de Calibre no tiene permiso para añadir libros (es de solo lectura).")
+                task_progress.uploaded(paper.title, False, "el usuario de Calibre es de solo lectura")
                 return
             print(f"✗ ({error})")
+            task_progress.uploaded(paper.title, False)
         except Exception as error:
             print(f"✗ ({error})")
+            task_progress.uploaded(paper.title, False)
     print(f"✓ Subidos a Calibre: {uploaded}/{len(papers)}")
 
 
@@ -721,6 +744,8 @@ def retry_pending() -> None:
             continue
 
         print(f"\n{folder}: {len(pending)} pendientes")
+        task_progress.group(folder.name)
+        task_progress.step("Buscando copias en los catálogos locales y en OpenAlex")
         found = add_catalogue_copies(pending)
         if found:
             print(f"Encontradas en los catálogos locales: {found}")
