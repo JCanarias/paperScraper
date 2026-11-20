@@ -55,14 +55,19 @@ class OpenAlexSource(Source):
             ))
         return authors
 
-    def get_papers(self, author: Author) -> list[Paper]:
+    def get_papers(self, author: Author, published_since: dt.date | None = None) -> list[Paper]:
+        """All the author's works, or only the ones published since that day (a much smaller answer).
+        OpenAlex's filter by the day a work was added to it is only for paying members."""
         papers = []
+        filters = f"author.id:{author.id},{NOT_WORKS}"
+        if published_since:
+            filters += f",from_publication_date:{published_since.isoformat()}"
 
         # OpenAlex returns results in pages; the cursor tells us where the next page starts.
         cursor = "*"
         while cursor:
             response = self._get(f"{OPENALEX_API_URL}/works", params={
-                "filter": f"author.id:{author.id},{NOT_WORKS}",
+                "filter": filters,
                 "per-page": MAX_RESULTS_PER_PAGE,
                 "cursor": cursor,
             })

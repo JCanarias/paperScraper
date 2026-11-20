@@ -73,8 +73,13 @@ def author_profiles(content: dict) -> list[Author]:
 
 
 def set_follow(file_path: Path, follow: bool) -> None:
+    set_content_value(file_path, "follow", follow)
+
+
+def set_content_value(file_path: Path, key: str, value) -> None:
+    """Change one value of the list's file, keeping the rest."""
     content = load_content(file_path)
-    content["follow"] = follow
+    content[key] = value
     file_path.write_text(json.dumps(content, indent=2, ensure_ascii=False), encoding="utf-8")
 
 

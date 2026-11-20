@@ -33,11 +33,19 @@ from models import Paper
 from reviews import apply_decisions, ask_by_telegram, doubtful, download_accepted, needs_review, set_pending
 from run_lock import take_daily_lock
 from sources.openalex import OpenAlexSource
-from storage import author_profiles, find_saved_lists, load_content, load_papers, update_papers
+from storage import author_profiles, find_saved_lists, load_content, load_papers, set_content_value, update_papers
 from telegram_notify import send_message
 
 # The longest wait between two searches for the file of a work that keeps failing.
 MAX_DAYS_BETWEEN_CHECKS = 30
+# Asking OpenAlex for all the works of every author and searching every library takes about an hour each
+# day (2026-11-16: an hour with only 6 works to look for). So each author gets that full search once a week,
+# on a day of its own so they don't all fall on the same one; the other days, only the works published
+# lately. (OpenAlex's filter by the day a work was added is only for paying members.)
+FULL_SEARCH_EVERY_DAYS = 7
+# Works published since this many days ago are looked for every day.
+RECENT_WORKS_DAYS = 2 * 365
+LAST_FULL_SEARCH_KEY = "last_full_search"
 # What the daily check leaves of the OpenAlex key's daily budget (1 $ for a free key), for the menu.
 OPENALEX_BUDGET_LEFT_FOR_MENU_USD = 0.30
 # The lines of the check that tell about a problem (a source that fails, a catalogue not updated...).
@@ -104,25 +112,54 @@ def followed_lists() -> list[Path]:
             if load_content(papers_file).get("follow")]
 
 
-def check_author(source: OpenAlexSource, papers_file: Path) -> None:
+def check_author(source: OpenAlexSource, papers_file: Path, position: int = 0) -> None:
     folder = papers_file.parent
     content = load_content(papers_file)
     papers = load_papers(papers_file)
-    print(f"\n{'=' * 60}\n{folder.name}\n{'=' * 60}")
+    started = time.monotonic()
+    print(f"\n{'=' * 60}\n{folder.name}  [{dt.datetime.now():%H:%M}]\n{'=' * 60}")
     task_progress.group(re.sub(r"\s*\([^)]*\)$", "", folder.name))
     # The languages chosen when this author was searched (or the general ones).
-    with using_languages(content.get("language_choice")):
-        print(f"Idiomas: {languages_label()}")
-        check_author_works(source, papers_file, content, papers)
+    try:
+        with using_languages(content.get("language_choice")):
+            print(f"Idiomas: {languages_label()}")
+            check_author_works(source, papers_file, content, papers, position)
+    finally:
+        print(f"[{folder.name}: {(time.monotonic() - started) / 60:.1f} min]")
 
 
-def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict, papers: list[Paper]) -> None:
+def full_search_today(content: dict, today: dt.date, position: int) -> bool:
+    """Whether the author gets the full search today: on its own day of the week (from its place in the
+    list of followed authors, so each day gets about as many), or when the last one is older than two
+    weeks, or there was none."""
+    try:
+        last = dt.date.fromisoformat(content.get(LAST_FULL_SEARCH_KEY) or "")
+    except ValueError:
+        return True
+    days = (today - last).days
+    if days >= 2 * FULL_SEARCH_EVERY_DAYS:
+        return True
+    return days > 0 and today.toordinal() % FULL_SEARCH_EVERY_DAYS == position % FULL_SEARCH_EVERY_DAYS
+
+
+def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict, papers: list[Paper],
+                       position: int = 0) -> None:
     folder = papers_file.parent
     today = dt.date.today()
     # A work that gets new links today (a new copy found) is tried today, whatever it failed before.
     links_before = {id(paper): len(paper.pdf_urls) for paper in papers}
+    full = full_search_today(content, today, position)
+    if full:
+        print("Búsqueda completa (OpenAlex y bibliotecas)")
+    else:
+        print(f"Búsqueda rápida: obras de OpenAlex de los últimos {RECENT_WORKS_DAYS // 365} años "
+              f"(la completa, una vez por semana)")
     try:
-        found = keep_chosen_languages(merge_duplicates(main.find_author_works(source, author_profiles(content))))
+        since = None if full else today - dt.timedelta(days=RECENT_WORKS_DAYS)
+        found = keep_chosen_languages(merge_duplicates(
+            main.find_author_works(source, author_profiles(content), published_since=since)))
+        if full:
+            set_content_value(papers_file, LAST_FULL_SEARCH_KEY, today.isoformat())
     except Exception as error:
         # Without the new search, the pending works of the list are still looked for.
         print(f"Aviso: no se han podido buscar obras nuevas: {error}")
@@ -316,14 +353,20 @@ def main_check() -> None:
             return
         task_progress.groups(len(lists))
         main.connect_calibre()
+        # The files left in the folders because Calibre didn't answer last time (2026-11-12 and 13) go first.
+        if main.calibre:
+            try:
+                main.upload_downloaded()
+            except Exception as error:
+                print(f"Aviso: no se han podido subir a Calibre los archivos pendientes: {error}")
         main.DOWNLOAD_LISTENERS.append(on_download)
         sources.openalex.budget_to_keep_usd = OPENALEX_BUDGET_LEFT_FOR_MENU_USD
         # The answers given in Telegram since the last check.
         accepted = apply_decisions()
         source = OpenAlexSource()
-        for papers_file in lists:
+        for position, papers_file in enumerate(lists):
             try:
-                check_author(source, papers_file)
+                check_author(source, papers_file, position)
             except Exception:
                 # One author that fails doesn't stop the others.
                 traceback.print_exc()

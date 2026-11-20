@@ -24,6 +24,7 @@ BOOK_TYPE = "monographie imprimée"
 class GallicaSource(BookSource):
 
     name = "Gallica"
+    uses_browser = True
 
     def search_books_by_author(self, author_name: str, limit: int) -> list[Paper]:
         surname = author_name.split()[-1] if author_name.split() else ""

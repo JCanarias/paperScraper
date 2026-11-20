@@ -22,6 +22,7 @@ READER_URL = "https://babel.hathitrust.org/cgi/pt?id={id}"
 class HathiTrustSource(BookSource):
 
     name = "HathiTrust"
+    uses_browser = True
 
     def search_books_by_author(self, author_name: str, limit: int) -> list[Paper]:
         papers = self._search(author_name, "author")

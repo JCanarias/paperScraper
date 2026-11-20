@@ -1,5 +1,8 @@
+import datetime as dt
 import re
+import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import questionary
@@ -60,6 +63,11 @@ PDF_FINDERS = [
     SeleniumSciHubFinder(),
     CustomLegalSourceFinder(),
 ]
+# Sci-Hub takes a few seconds per DOI and almost never gets a paper it didn't have before (1.766 DOIs
+# and no new file on 2026-11-10): a work it couldn't give waits this long before it's asked again.
+FINDER_RETRY_DAYS = {"SeleniumSciHubFinder": 30}
+# Downloads that take longer than this say so in the log.
+SLOW_DOWNLOAD_SECONDS = 10
 # OpenAlex already gives the academic books; these add whole books, mostly public domain classics.
 INTERNET_ARCHIVE = InternetArchiveSource()
 # Classics in the public domain, first in Spanish; slower (15-30 s per author).
@@ -239,8 +247,10 @@ def find_and_download(papers: list[Paper], folder: Path, with_links: list[Paper]
     if with_links:
         print(f"Descargando {len(with_links)} obras con enlace ya conocido...")
         task_progress.step(f"Descargando {len(with_links)} obras con enlace ya conocido")
+        started = time.monotonic()
         for paper in with_links:
             try_download(paper, folder, paper.pdf_urls)
+        print(f"Enlaces ya conocidos: {len(with_links)} obras en {time.monotonic() - started:.0f} s")
 
     for finder in PDF_FINDERS:
         pending = [paper for paper in papers if not is_downloaded(paper, folder)]
@@ -249,29 +259,55 @@ def find_and_download(papers: list[Paper], folder: Path, with_links: list[Paper]
         if type(finder).__name__ in UNREACHABLE_SOURCES:
             continue
 
+        finder_name = type(finder).__name__
+        retry_days = FINDER_RETRY_DAYS.get(finder_name)
+        if retry_days:
+            waiting = [paper for paper in pending if missed_recently(paper, finder_name, retry_days)]
+            if waiting:
+                print(f"{finder_name}: {len(waiting)} obras esperan (ya las buscó hace menos de {retry_days} días)")
+                pending = [paper for paper in pending if paper not in waiting]
+            if not pending:
+                continue
+
         task_progress.finder_step(finder)
+        started = time.monotonic()
         try:
             found_urls = finder.find_pdf_urls(pending)
         except Exception as error:
             # A service that is down or refusing us (CORE timeouts, Semantic Scholar's limits)
             # would make every following search wait again, so it is skipped until the restart.
-            UNREACHABLE_SOURCES.add(type(finder).__name__)
-            print(f"Aviso: {type(finder).__name__} ha fallado y se salta en el resto de búsquedas: {error}")
+            UNREACHABLE_SOURCES.add(finder_name)
+            print(f"Aviso: {finder_name} ha fallado y se salta en el resto de búsquedas: {error}")
             continue
+        print(f"{finder_name}: {len(pending)} obras en {time.monotonic() - started:.0f} s")
 
-        for position, urls in found_urls.items():
-            paper = pending[position]
-            new_urls = [url for url in urls if url not in paper.pdf_urls]
+        today = dt.date.today().isoformat()
+        for position, paper in enumerate(pending):
+            new_urls = [url for url in found_urls.get(position, []) if url not in paper.pdf_urls]
             if new_urls:
                 paper.pdf_urls.extend(new_urls)
                 try_download(paper, folder, new_urls)
+            # Giving only links that were already known doesn't count as finding it.
+            if retry_days and not is_downloaded(paper, folder):
+                paper.finder_misses[finder_name] = today
+
+
+def missed_recently(paper: Paper, finder_name: str, days: int) -> bool:
+    try:
+        missed = dt.date.fromisoformat(paper.finder_misses.get(finder_name, ""))
+    except ValueError:
+        return False
+    return dt.date.today() < missed + dt.timedelta(days=days)
 
 
 def try_download(paper: Paper, folder: Path, urls: list[str]) -> None:
     print(f"  Descargando {paper.doi or paper.title[:MAX_TITLE_LENGTH_SHOWN]}...", end=" ", flush=True)
     task_progress.trying(paper.title)
+    started = time.monotonic()
     downloaded = download_paper(paper, folder, urls)
-    print("✓" if downloaded else "✗")
+    seconds = time.monotonic() - started
+    # Only the slow ones say how long they took (the browser, Gallica's pages, links that time out).
+    print(("✓" if downloaded else "✗") + (f" ({seconds:.0f} s)" if seconds >= SLOW_DOWNLOAD_SECONDS else ""))
     if downloaded:
         for listener in DOWNLOAD_LISTENERS:
             try:
@@ -303,25 +339,39 @@ def quit_finder_drivers() -> None:
 
 
 def find_books(search: Callable[[BookSource], list[Paper]]) -> list[Paper]:
+    """Every library at the same time, except the ones that share the browser, which go one after another.
+    What each one found is shown afterwards, in the usual order, with the seconds it took."""
+    book_sources = [source for source in BOOK_SOURCES if source.name not in UNREACHABLE_SOURCES]
+    task_progress.step(f"Buscando libros en {len(book_sources)} bibliotecas")
+    lanes = [[source] for source in book_sources if not source.uses_browser]
+    lanes.append([source for source in book_sources if source.uses_browser])
+    outcomes: dict[str, tuple[list[Paper] | Exception, float]] = {}
+
+    def search_lane(lane: list[BookSource]) -> None:
+        for book_source in lane:
+            started = time.monotonic()
+            try:
+                outcomes[book_source.name] = search(book_source), time.monotonic() - started
+            except Exception as error:
+                outcomes[book_source.name] = error, time.monotonic() - started
+
+    with ThreadPoolExecutor(max_workers=len(lanes)) as pool:
+        list(pool.map(search_lane, lanes))
+
     books = []
-    for book_source in BOOK_SOURCES:
-        if book_source.name in UNREACHABLE_SOURCES:
-            continue
-        print(f"Buscando libros en {book_source.name}...", end=" ", flush=True)
-        task_progress.step(f"Buscando libros en {book_source.name}")
-        try:
-            found = search(book_source)
-        except requests.RequestException as error:
+    for book_source in book_sources:
+        found, seconds = outcomes[book_source.name]
+        print(f"Buscando libros en {book_source.name}...", end=" ")
+        if isinstance(found, requests.RequestException):
             # A library that doesn't answer (Gutendex is often overloaded) would make
             # every following search wait again, so it is skipped until the program restarts.
             UNREACHABLE_SOURCES.add(book_source.name)
-            print(f"no responde; se salta en el resto de búsquedas ({type(error).__name__})")
-            continue
-        except Exception as error:
-            print(f"ha fallado ({error})")
-            continue
-        print(len(found))
-        books.extend(found)
+            print(f"no responde; se salta en el resto de búsquedas ({type(found).__name__})")
+        elif isinstance(found, Exception):
+            print(f"ha fallado ({found})")
+        else:
+            print(f"{len(found)} ({seconds:.0f} s)")
+            books.extend(found)
     return books
 
 
@@ -469,13 +519,22 @@ def download_author_works(source: OpenAlexSource, selected_authors: list[Author]
         print(f"✓ Lista guardada en {papers_file}\n")
 
 
-def find_author_works(source: OpenAlexSource, profiles: list[Author]) -> list[Paper]:
-    """Every work of these OpenAlex profiles (one person), and the books under their names."""
+def find_author_works(source: OpenAlexSource, profiles: list[Author],
+                      published_since: dt.date | None = None) -> list[Paper]:
+    """Every work of these OpenAlex profiles (one person), and the books under their names.
+
+    With `published_since`, only OpenAlex's works published since that day, and no other library:
+    the daily check's quick look between two full searches.
+    """
     papers: list[Paper] = []
     task_progress.step("Buscando sus obras en OpenAlex")
+    started = time.monotonic()
     for author in profiles:
-        papers += source.get_papers(author)
+        papers += source.get_papers(author, published_since)
     openalex_count = len(papers)
+    print(f"OpenAlex: {openalex_count} obras ({time.monotonic() - started:.0f} s)")
+    if published_since:
+        return papers
     for name in dict.fromkeys(author.name for author in profiles):
         papers += find_books(lambda book_source: book_source.search_books_by_author(name, MAX_BOOKS_PER_SOURCE))
     print(f"\nSe han encontrado {openalex_count} obras en OpenAlex y "

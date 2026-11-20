@@ -33,6 +33,7 @@ ROLE = re.compile(r"\s-\s*[a-záéíóúñ. ]+$", re.I)
 class BNESource(BookSource):
 
     name = "BNE"
+    uses_browser = True
 
     def __init__(self):
         self.index = LocalIndex(self.name)

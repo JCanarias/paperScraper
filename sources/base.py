@@ -23,6 +23,9 @@ class BookSource(ABC):
     """Common interface for the places where we look for whole books."""
 
     name: str
+    # It goes through the shared Chrome (browser_session.py): the ones that do are searched one after
+    # another, while the rest are searched at the same time (main.find_books).
+    uses_browser: bool = False
 
     @abstractmethod
     def search_books_by_author(self, author_name: str, limit: int) -> list[Paper]:

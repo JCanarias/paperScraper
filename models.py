@@ -41,6 +41,9 @@ class Paper:
     # the more it has failed, the longer the daily check waits before trying again (daily_check.py).
     failed_checks: int = 0
     last_check: str | None = None
+    # The day each slow PDF finder last looked for it in vain ({"SeleniumSciHubFinder": "2026-11-20"}):
+    # it isn't asked again until main.FINDER_RETRY_DAYS have passed, even if the work gets new links.
+    finder_misses: dict[str, str] = field(default_factory=dict)
     # The other places where the same work was found (duplicates.combine): a work found only in
     # Internet Archive or Google Books is doubtful and the user is asked first (reviews.py).
     also_found_in: list[str] = field(default_factory=list)
