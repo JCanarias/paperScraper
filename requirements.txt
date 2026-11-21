@@ -1,6 +1,5 @@
 requests
 python-dotenv
-cloudscraper
 questionary
 pikepdf
 Pillow

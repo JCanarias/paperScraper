@@ -7,7 +7,6 @@ panel always reads a complete one. A failure here never stops a task.
 import datetime as dt
 import json
 import os
-import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -17,7 +16,7 @@ EVENTS_KEPT = 40
 # The finders' class names, as the panel shows them.
 FINDER_NAMES = {
     "UnpaywallFinder": "Unpaywall", "SemanticScholarFinder": "Semantic Scholar", "CoreFinder": "CORE",
-    "SeleniumSciHubFinder": "Sci-Hub", "CustomLegalSourceFinder": "otras webs",
+    "SeleniumSciHubFinder": "Sci-Hub",
 }
 
 _state: dict | None = None

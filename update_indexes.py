@@ -22,7 +22,7 @@ def update_indexes(names: list[str], max_minutes: float | None = None) -> None:
         try:
             complete = source.update_index(max_minutes)
         except KeyboardInterrupt:
-            print(f"⏹ Interrumpido; la próxima vez se sigue donde se ha quedado.")
+            print("⏹ Interrumpido; la próxima vez se sigue donde se ha quedado.")
             raise
         except Exception as error:
             print(f"✗ No se ha podido actualizar {source.name}: {error}")

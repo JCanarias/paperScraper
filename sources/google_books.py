@@ -15,13 +15,12 @@ the same Google scan, when it is there (internet_archive_copies.py).
 """
 import os
 from typing import Optional
-from urllib.parse import urlencode
 
 import requests
 
 from models import Paper
 from sources.base import BookSource
-from sources.names import name_words, readable_name, same_author
+from sources.names import readable_name, same_author
 
 GOOGLE_BOOKS_API = "https://www.googleapis.com/books/v1/volumes"
 HEADERS = {"User-Agent": "paperScraper/1.0 (https://github.com/JCanarias/paperScraper)"}

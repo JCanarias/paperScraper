@@ -18,7 +18,6 @@ from duplicates import combine, merge_duplicates, shared_surname, title_words
 from manual_download import download_by_hand
 from models import Author, Paper
 from pdf_finders.core import CoreFinder
-from pdf_finders.custom_legal_source import CustomLegalSourceFinder
 from pdf_finders.semantic_scholar import SemanticScholarFinder
 from pdf_finders.selenium_fast import SeleniumSciHubFinder
 from pdf_finders.unpaywall import UnpaywallFinder
@@ -61,7 +60,6 @@ PDF_FINDERS = [
     SemanticScholarFinder(),
     CoreFinder(),
     SeleniumSciHubFinder(),
-    CustomLegalSourceFinder(),
 ]
 # Sci-Hub takes a few seconds per DOI and almost never gets a paper it didn't have before (1.766 DOIs
 # and no new file on 2026-11-10): a work it couldn't give waits this long before it's asked again.

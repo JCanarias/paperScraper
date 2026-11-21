@@ -13,10 +13,11 @@ import sys
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 
-import config  # noqa: F401  (reads .env)
 from calibre_library import CalibreLibrary
 
+load_dotenv(Path(__file__).parent / ".env")
 LIBRARY_FOLDER = Path(__file__).parent / "library"
 BOOK_EXTENSIONS = {".epub", ".pdf", ".mobi", ".azw", ".azw3", ".djvu", ".fb2", ".docx", ".odt", ".rtf", ".txt",
                    ".cbz", ".cbr", ".lit", ".pdb"}

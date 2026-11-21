@@ -10,7 +10,6 @@ OPENALEX_API_URL = os.environ["OPENALEX_API_URL"]
 # Free key; OpenAlex needs it to go past the first page of results.
 OPENALEX_API_KEY = os.environ.get("OPEN_ALEX_API_KEY", "")
 SEMANTIC_SCHOLAR_API_URL = os.environ["SEMANTIC_SCHOLAR_API_URL"]
-CUSTOM_LEGAL_SOURCE_API_URL = os.environ["CUSTOM_LEGAL_SOURCE_API_URL"]
 UNPAYWALL_API_URL = os.environ["UNPAYWALL_API_URL"]
 UNPAYWALL_EMAIL = os.environ["UNPAYWALL_EMAIL"]
 CORE_API_URL = os.environ["CORE_API_URL"]
