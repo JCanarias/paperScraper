@@ -41,7 +41,7 @@ def add_books(calibre: CalibreLibrary, books: list[Path], allow_duplicates: bool
     for book in books:
         print(f"  {book.name}...", end=" ", flush=True)
         try:
-            result = calibre.add_file(book, allow_duplicates)
+            calibre_answer = calibre.add_file(book, allow_duplicates)
         except requests.HTTPError as error:
             if error.response is not None and error.response.status_code == 403:
                 print("\nEl usuario de Calibre no tiene permiso para añadir libros (es de solo lectura).")
@@ -53,13 +53,13 @@ def add_books(calibre: CalibreLibrary, books: list[Path], allow_duplicates: bool
             print(f"✗ ({error})")
             failed += 1
             continue
-        if result.get("duplicates"):
+        if calibre_answer.get("duplicates"):
             print("ya estaba")
             repeated += 1
         else:
-            print(f"✓ {result.get('title', '')} — {' & '.join(result.get('authors', []))}")
+            print(f"✓ {calibre_answer.get('title', '')} — {' & '.join(calibre_answer.get('authors', []))}")
             added += 1
-            if remove_from_library(calibre, book, result["book_id"]):
+            if remove_from_library(calibre, book, calibre_answer["book_id"]):
                 removed += 1
     print(f"\n✓ Añadidos: {added}   Ya estaban: {repeated}   Errores: {failed}   (tag: {calibre.tag})")
     if removed:

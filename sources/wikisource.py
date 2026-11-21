@@ -89,7 +89,7 @@ class WikisourceSource(BookSource):
 
     def _author_pages(self, language: str, author_name: str) -> list[str]:
         namespace = AUTHOR_NAMESPACES[language]
-        data = api_get(language, {
+        answer = api_get(language, {
             "action": "query",
             "list": "search",
             "srsearch": author_name,
@@ -98,7 +98,7 @@ class WikisourceSource(BookSource):
             "srprop": "",
         })
         # Homonyms are dropped: the page name, without "Autor:", must be the author we want.
-        titles = [result["title"] for result in data["query"]["search"]]
+        titles = [search_hit["title"] for search_hit in answer["query"]["search"]]
         return [title for title in titles if same_author(author_name, title.split(":", 1)[-1])]
 
     def _linked_works(self, language: str, author_page: str) -> list[str]:
@@ -120,16 +120,16 @@ class WikisourceSource(BookSource):
         """The pages linked from a page, in the order they appear in it."""
         # The API gives the links in alphabetical order, but author pages list the main works
         # (novels, essays...) before the short ones (poems, articles), so we keep the page's order.
-        data = api_get(language, {
+        answer = api_get(language, {
             "action": "query",
             "prop": "revisions",
             "rvprop": "content",
             "rvslots": "main",
             "titles": title,
         })
-        text = data["query"]["pages"][0]["revisions"][0]["slots"]["main"]["content"]
+        text = answer["query"]["pages"][0]["revisions"][0]["slots"]["main"]["content"]
 
-        data = api_get(language, {
+        answer = api_get(language, {
             "action": "query",
             "generator": "links",
             "titles": title,
@@ -139,7 +139,7 @@ class WikisourceSource(BookSource):
             "ppprop": "disambiguation",
             "redirects": 1,
         })
-        query = data.get("query", {})
+        query = answer.get("query", {})
         pages = {page["title"]: page for page in query.get("pages", [])}
         # A link can point to a redirect; the API gives the page it leads to.
         redirects = {redirect["from"]: redirect["to"] for redirect in query.get("redirects", [])}
@@ -157,7 +157,7 @@ class WikisourceSource(BookSource):
         wanted = set(name_words(words))
         # "intitle:" makes the search look only at the page names, not at the whole text.
         query = " ".join(f"intitle:{word}" for word in clean_words(words).split())
-        data = api_get(language, {
+        answer = api_get(language, {
             "action": "query",
             "generator": "search",
             "gsrsearch": query,
@@ -167,7 +167,7 @@ class WikisourceSource(BookSource):
             "ppprop": "disambiguation",
             "redirects": 1,
         })
-        pages = data.get("query", {}).get("pages", [])
+        pages = answer.get("query", {}).get("pages", [])
         # The search results come unordered in "pages"; "index" is their place in the results.
         pages.sort(key=lambda page: page.get("index", 0))
         titles = [page["title"] for page in pages if is_whole_work(page) and wanted <= set(name_words(page["title"]))]
@@ -190,20 +190,20 @@ class WikisourceSource(BookSource):
         # Every work page has a hidden block ("ws-data") with its title, author, year and publisher;
         # it is what the export tool uses too. It is in the first section, so we don't ask for the whole text.
         try:
-            data = api_get(language, {
+            answer = api_get(language, {
                 "action": "parse",
                 "page": title,
                 "prop": "text",
                 "section": 0,
                 "redirects": 1,
             })
-            page_html = data["parse"]["text"]
+            page_html = answer["parse"]["text"]
         except API_ERRORS:
             return None
 
         details = work_details(page_html)
         year = re.search(r"\d{4}", details.get("year", ""))
-        page_title = data["parse"].get("title", title)
+        page_title = answer["parse"].get("title", title)
         return Paper(
             title=best_title(details.get("title", ""), page_title),
             year=int(year.group()) if year else None,

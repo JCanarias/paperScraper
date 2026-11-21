@@ -60,6 +60,9 @@ class AuthorResult:
     pending: int = 0
     failed: bool = False
 
+    def has_news(self) -> bool:
+        return bool(self.new or self.downloaded or self.failed)
+
 
 @dataclass
 class Report:
@@ -298,27 +301,28 @@ def on_download(paper: Paper, folder: Path) -> None:
 
 def report_text() -> str:
     minutes = round((time.monotonic() - report.started) / 60)
-    results = list(report.authors.values())
-    downloaded = sum(result.downloaded for result in results)
+    author_results = list(report.authors.values())
+    downloaded = sum(author.downloaded for author in author_results)
     lines = [
         f"📋 Revisión diaria terminada ({minutes // 60} h {minutes % 60} min)",
-        f"Autores revisados: {len(results)}",
-        f"📥 Descargadas: {downloaded}" + (f" (subidas a Calibre: {report.in_calibre})" if calibre_sync.connected_library else ""),
-        f"🆕 Obras nuevas: {sum(result.new for result in results)}",
-        f"⏳ Siguen sin archivo: {sum(result.pending for result in results)}",
+        f"Autores revisados: {len(author_results)}",
+        f"📥 Descargadas: {downloaded}"
+        + (f" (subidas a Calibre: {report.in_calibre})" if calibre_sync.connected_library else ""),
+        f"🆕 Obras nuevas: {sum(author.new for author in author_results)}",
+        f"⏳ Siguen sin archivo: {sum(author.pending for author in author_results)}",
     ]
     if report.asked:
         lines.append(f"❓ Obras dudosas preguntadas: {report.asked}")
     # Only the authors with something to tell; the rest stay as they were.
-    news = [result for result in results if result.new or result.downloaded or result.failed]
+    news = [author for author in author_results if author.has_news()]
     if news:
         lines.append("")
-        for result in news:
-            if result.failed:
-                lines.append(f"• {result.name}: ha fallado (mira el log)")
+        for author in news:
+            if author.failed:
+                lines.append(f"• {author.name}: ha fallado (mira el log)")
             else:
-                lines.append(f"• {result.name}: {result.new} nuevas, {result.downloaded} descargadas, "
-                             f"{result.pending} sin archivo")
+                lines.append(f"• {author.name}: {author.new} nuevas, {author.downloaded} descargadas, "
+                             f"{author.pending} sin archivo")
     if report.problems:
         lines += ["", "⚠️ Problemas:"]
         for problem, times in list(report.problems.items())[:MAX_PROBLEMS_IN_REPORT]:
@@ -332,20 +336,20 @@ def report_text() -> str:
 
 def report_data(outcome: str, error: str = "") -> dict:
     """The report as the panel shows it; outcome is "ok", "failed" or "stopped"."""
-    results = list(report.authors.values())
+    author_results = list(report.authors.values())
     return {
         "started": report.started_at.isoformat(timespec="minutes"),
         "ended": dt.datetime.now().isoformat(timespec="minutes"),
         "minutes": round((time.monotonic() - report.started) / 60),
         "outcome": outcome,
         "error": error,
-        "authors_checked": len(results),
-        "downloaded": sum(result.downloaded for result in results),
+        "authors_checked": len(author_results),
+        "downloaded": sum(author.downloaded for author in author_results),
         "in_calibre": report.in_calibre if calibre_sync.connected_library else None,
-        "new": sum(result.new for result in results),
-        "pending": sum(result.pending for result in results),
+        "new": sum(author.new for author in author_results),
+        "pending": sum(author.pending for author in author_results),
         "asked": report.asked,
-        "authors": [vars(result) for result in results if result.new or result.downloaded or result.failed],
+        "authors": [vars(author) for author in author_results if author.has_news()],
         "downloads": report.downloads,
         "problems": [{"text": problem, "times": times} for problem, times in report.problems.items()],
     }

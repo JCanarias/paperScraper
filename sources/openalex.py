@@ -43,14 +43,14 @@ class OpenAlexSource(Source):
         response.raise_for_status()
 
         authors = []
-        for result in response.json()["results"]:
+        for author_record in response.json()["results"]:
             # Some authors have no known institution, and OpenAlex returns null instead of [].
-            known_institutions = result["last_known_institutions"] or []
+            known_institutions = author_record["last_known_institutions"] or []
             institutions = [institution["display_name"] for institution in known_institutions]
             authors.append(Author(
-                id=result["id"],
-                name=result["display_name"],
-                works_count=result["works_count"],
+                id=author_record["id"],
+                name=author_record["display_name"],
+                works_count=author_record["works_count"],
                 institutions=institutions,
             ))
         return authors
@@ -67,10 +67,10 @@ class OpenAlexSource(Source):
                 "cursor": cursor,
             })
             response.raise_for_status()
-            data = response.json()
+            page = response.json()
 
-            papers.extend(paper for paper in map(self._build_paper, data["results"]) if not is_front_matter(paper.title))
-            cursor = data["meta"]["next_cursor"]
+            papers.extend(paper for paper in map(self._build_paper, page["results"]) if not is_front_matter(paper.title))
+            cursor = page["meta"]["next_cursor"]
 
         return papers
 
@@ -82,7 +82,7 @@ class OpenAlexSource(Source):
             "per-page": limit,
         })
         response.raise_for_status()
-        return [self._build_paper(result) for result in response.json()["results"]]
+        return [self._build_paper(work_record) for work_record in response.json()["results"]]
 
     def search_papers_by_title(self, words: str, limit: int) -> tuple[list[Paper], int]:
         # Commas separate filters in OpenAlex, so they can't appear inside the search text.
@@ -99,11 +99,11 @@ class OpenAlexSource(Source):
                 "cursor": cursor,
             })
             response.raise_for_status()
-            data = response.json()
+            page = response.json()
 
-            papers.extend(paper for paper in map(self._build_paper, data["results"]) if not is_front_matter(paper.title))
-            total = data["meta"]["count"]
-            cursor = data["meta"]["next_cursor"]
+            papers.extend(paper for paper in map(self._build_paper, page["results"]) if not is_front_matter(paper.title))
+            total = page["meta"]["count"]
+            cursor = page["meta"]["next_cursor"]
 
         return papers[:limit], total
 
@@ -115,7 +115,7 @@ class OpenAlexSource(Source):
             "per-page": limit,
         })
         response.raise_for_status()
-        return [self._build_paper(result) for result in response.json()["results"]]
+        return [self._build_paper(work_record) for work_record in response.json()["results"]]
 
     def search_by_title_and_author(self, title: str, surname: str, limit: int) -> list[Paper]:
         """Works with those words in the title and an author with that surname, the most relevant first."""
@@ -126,7 +126,7 @@ class OpenAlexSource(Source):
             "per-page": limit,
         })
         response.raise_for_status()
-        return [self._build_paper(result) for result in response.json()["results"]]
+        return [self._build_paper(work_record) for work_record in response.json()["results"]]
 
     def get_papers_by_dois(self, dois: list[str]) -> list[Paper]:
         papers = []
@@ -137,7 +137,7 @@ class OpenAlexSource(Source):
                 "per-page": MAX_DOIS_PER_REQUEST,
             })
             response.raise_for_status()
-            papers.extend(self._build_paper(result) for result in response.json()["results"])
+            papers.extend(self._build_paper(work_record) for work_record in response.json()["results"])
         return papers
 
     def get_papers_by_openalex_ids(self, ids: list[str]) -> list[Paper]:
@@ -150,7 +150,7 @@ class OpenAlexSource(Source):
                 "per-page": MAX_DOIS_PER_REQUEST,
             })
             response.raise_for_status()
-            papers.extend(self._build_paper(result) for result in response.json()["results"])
+            papers.extend(self._build_paper(work_record) for work_record in response.json()["results"])
         return papers
 
     def _get(self, url: str, params: dict) -> requests.Response:
@@ -290,8 +290,8 @@ def budget_spent_message(response: requests.Response) -> str:
 def answer_message(response: requests.Response) -> str:
     """What OpenAlex says about the error, without the address it repeats."""
     try:
-        data = response.json()
-        message = str(data.get("message") or data.get("error") or "")
+        error_answer = response.json()
+        message = str(error_answer.get("message") or error_answer.get("error") or "")
     except ValueError:
         message = response.text
     if OPENALEX_API_KEY:

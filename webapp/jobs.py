@@ -87,15 +87,15 @@ def title_download(arguments: dict) -> None:
     import work_search
     from models import Paper
 
-    results = json.loads(TITLE_RESULTS.read_text(encoding="utf-8"))
-    if results["words"] != arguments.get("words"):
+    saved_search = json.loads(TITLE_RESULTS.read_text(encoding="utf-8"))
+    if saved_search["words"] != arguments.get("words"):
         sys.exit("Los resultados han cambiado (otra búsqueda): vuelve a elegir.")
-    papers = [Paper(**paper) for paper in results["papers"]]
+    papers = [Paper(**paper) for paper in saved_search["papers"]]
     chosen = sorted({int(number) for number in arguments.get("chosen") or [] if 0 <= int(number) < len(papers)})
     if not chosen:
         sys.exit("No has elegido ninguna obra.")
     calibre_sync.connect()
-    words = results["words"]
+    words = saved_search["words"]
     work_search.download_and_save_search(words, [papers[number] for number in chosen],
                                   work_search.search_folder(work_search.TITLE_SEARCH_FOLDER, words))
 

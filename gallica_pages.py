@@ -74,10 +74,10 @@ def download_pdf(url: str) -> bytes:
     pages = []
     for canvas in canvases:
         service = canvas["images"][0]["resource"]["service"]["@id"]
-        status, data = driver.execute_async_script(FETCH_IMAGE, f"{service}/full/{PAGE_WIDTH},/0/native.jpg")
-        if status != 200 or not data:
+        status, image_base64 = driver.execute_async_script(FETCH_IMAGE, f"{service}/full/{PAGE_WIDTH},/0/native.jpg")
+        if status != 200 or not image_base64:
             raise ValueError(f"Gallica no ha dado la página {len(pages) + 1} ({status})")
-        pages.append(base64.b64decode(data))
+        pages.append(base64.b64decode(image_base64))
         task_progress.detail(f"Gallica: página {len(pages)} de {len(canvases)}")
         if len(pages) % PROGRESS_EVERY == 0:
             print(f"  Gallica: página {len(pages)} de {len(canvases)}", flush=True)

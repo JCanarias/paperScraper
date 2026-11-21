@@ -62,15 +62,15 @@ class GoogleBooksSource(BookSource):
         response.raise_for_status()
 
         try:
-            data = response.json()
-            items = data.get("items", [])
+            answer = response.json()
+            volumes = answer.get("items", [])
         except (ValueError, KeyError):
             return []
 
         papers = []
-        for item in items[:limit]:
+        for volume in volumes[:limit]:
             try:
-                paper = self._item_to_paper(item)
+                paper = self._volume_to_paper(volume)
                 if paper:
                     papers.append(paper)
             except Exception:
@@ -78,9 +78,9 @@ class GoogleBooksSource(BookSource):
 
         return papers
 
-    def _item_to_paper(self, item: dict) -> Optional[Paper]:
-        """Convert Google Books API item to Paper."""
-        volume_info = item.get("volumeInfo", {})
+    def _volume_to_paper(self, volume: dict) -> Optional[Paper]:
+        """Convert Google Books API volume to Paper."""
+        volume_info = volume.get("volumeInfo", {})
         title = volume_info.get("title")
         if not title:
             return None
@@ -102,7 +102,7 @@ class GoogleBooksSource(BookSource):
 
         return Paper(
             title=title,
-            authors=[readable_name(a) for a in authors],
+            authors=[readable_name(author) for author in authors],
             year=year,
             doi=None,
             journal=volume_info.get("publisher"),

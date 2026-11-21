@@ -123,8 +123,8 @@ def _wait_for_file(driver, url: str) -> tuple[bytes | None, str]:
         # Stopped while it is still coming: a whole book of several hundred MB took 12 minutes (2026-11-21).
         if current > MAX_FILE_BYTES:
             raise FileTooLarge()
-        finished = [f for f in files if not f.name.endswith(".crdownload") and f.stat().st_size > 0]
-        if finished and not any(f.name.endswith(".crdownload") for f in files):
+        finished = [file for file in files if not file.name.endswith(".crdownload") and file.stat().st_size > 0]
+        if finished and not any(file.name.endswith(".crdownload") for file in files):
             content = finished[0].read_bytes()
             finished[0].unlink()
             return content, ""

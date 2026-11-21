@@ -125,18 +125,18 @@ class CalibreLibrary:
 
     def upload(self, file_path: Path, paper: Paper) -> int | None:
         """Add the file to the library; return its book id, or None when Calibre says it is already there."""
-        result = self.add_file(file_path)
-        if result.get("duplicates"):
+        calibre_answer = self.add_file(file_path)
+        if calibre_answer.get("duplicates"):
             return None
 
         # Calibre reads most details from the file, but not the series, and it moves the date
         # to the day before in some time zones, so we set them again.
-        self._set_fields(result["book_id"], book_fields(paper))
+        self._set_fields(calibre_answer["book_id"], book_fields(paper))
         self._add_to_index(paper.title, paper.authors, paper.all_identifiers(), [file_path.suffix])
         if self.memory is not None:
             self.memory.remember(identifier_keys(paper.all_identifiers()) | title_keys(paper.title, paper.authors))
         paper.in_calibre = True
-        return result["book_id"]
+        return calibre_answer["book_id"]
 
     def add_file(self, file_path: Path, allow_duplicates: bool = False) -> dict:
         """Add a book file with the details Calibre reads from it, plus our tag.
@@ -151,13 +151,13 @@ class CalibreLibrary:
             timeout=UPLOAD_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
-        result = response.json()
-        if not result.get("duplicates"):
-            self.added_ids.add(result["book_id"])
+        calibre_answer = response.json()
+        if not calibre_answer.get("duplicates"):
+            self.added_ids.add(calibre_answer["book_id"])
             # Only our tag: the ones that come inside the files are usually noise.
-            self._set_fields(result["book_id"], {"tags": [self.tag]})
-            self._add_to_index(result.get("title", ""), result.get("authors", []), {}, [file_path.suffix])
-        return result
+            self._set_fields(calibre_answer["book_id"], {"tags": [self.tag]})
+            self._add_to_index(calibre_answer.get("title", ""), calibre_answer.get("authors", []), {}, [file_path.suffix])
+        return calibre_answer
 
     def _set_fields(self, book_id: int, changes: dict) -> None:
         # The books that were already in the library are never changed.
@@ -185,7 +185,7 @@ class CalibreLibrary:
             self.existing_names[field] = {name.lower(): name for name in names}
         known = self.existing_names[field]
         values = value if isinstance(value, list) else [value]
-        fixed = [known.setdefault(item.lower(), item) for item in values]
+        fixed = [known.setdefault(value.lower(), value) for value in values]
         return fixed if isinstance(value, list) else fixed[0]
 
     def _add_to_index(self, title: str, authors: list[str], identifiers: dict[str, str],

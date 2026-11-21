@@ -101,12 +101,12 @@ def upload_files(papers: list[Paper], folder: Path) -> None:
         print(f"  Subiendo {paper.title[:MAX_TITLE_LENGTH_SHOWN]}...", end=" ", flush=True)
         task_progress.trying(paper.title)
         try:
-            result = send_file(paper, folder)
-            if result == "uploaded":
+            outcome = send_file(paper, folder)
+            if outcome == "uploaded":
                 uploaded += 1
                 print("✓")
                 task_progress.uploaded(paper.title, True)
-            elif result == "kept":
+            elif outcome == "kept":
                 uploaded += 1
                 print("✓ (Calibre no muestra el archivo; se queda también aquí)")
                 task_progress.uploaded(paper.title, True)

@@ -58,15 +58,15 @@ def write_pdf_metadata(pdf_path: Path, paper: Paper) -> None:
 
 def fill_info_dictionary(pdf: pikepdf.Pdf, paper: Paper, now: datetime) -> None:
     # The old metadata place; other PDF readers still use it.
-    info = pdf.docinfo
-    info[pikepdf.Name.Title] = paper.title
+    document_info = pdf.docinfo
+    document_info[pikepdf.Name.Title] = paper.title
     # Calibre separates authors in this field with "&".
-    info[pikepdf.Name.Author] = " & ".join(paper.authors)
+    document_info[pikepdf.Name.Author] = " & ".join(paper.authors)
     # Calibre turns these two into tags, and we don't want any; some PDFs come with them already.
     for name in (pikepdf.Name.Subject, pikepdf.Name.Keywords):
-        if name in info:
-            del info[name]
-    info[pikepdf.Name.ModDate] = encode_pdf_date(now)
+        if name in document_info:
+            del document_info[name]
+    document_info[pikepdf.Name.ModDate] = encode_pdf_date(now)
 
 
 def build_xmp_packet(paper: Paper, now: datetime) -> bytes:
@@ -123,8 +123,8 @@ def new_description(rdf: ET.Element) -> ET.Element:
 
 def add_language_alternative(parent: ET.Element, name: str, value: str) -> None:
     alternatives = ET.SubElement(ET.SubElement(parent, tag(name)), tag("rdf:Alt"))
-    item = ET.SubElement(alternatives, tag("rdf:li"), {"{http://www.w3.org/XML/1998/namespace}lang": "x-default"})
-    item.text = value
+    list_item = ET.SubElement(alternatives, tag("rdf:li"), {"{http://www.w3.org/XML/1998/namespace}lang": "x-default"})
+    list_item.text = value
 
 
 def add_list(parent: ET.Element, name: str, values: list[str], ordered: bool = False) -> None:
@@ -137,9 +137,9 @@ def add_list(parent: ET.Element, name: str, values: list[str], ordered: bool = F
 def add_identifiers(parent: ET.Element, identifiers: dict[str, str]) -> None:
     bag = ET.SubElement(ET.SubElement(parent, tag("xmp:Identifier")), tag("rdf:Bag"))
     for scheme, value in identifiers.items():
-        item = ET.SubElement(bag, tag("rdf:li"), {tag("rdf:parseType"): "Resource"})
-        ET.SubElement(item, tag("xmpidq:Scheme")).text = scheme
-        ET.SubElement(item, tag("rdf:value")).text = value
+        list_item = ET.SubElement(bag, tag("rdf:li"), {tag("rdf:parseType"): "Resource"})
+        ET.SubElement(list_item, tag("xmpidq:Scheme")).text = scheme
+        ET.SubElement(list_item, tag("rdf:value")).text = value
 
 
 def add_series(parent: ET.Element, name: str, index: float) -> None:

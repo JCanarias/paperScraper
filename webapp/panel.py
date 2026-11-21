@@ -252,15 +252,15 @@ class Panel:
         from models import Paper
 
         try:
-            results = json.loads(TITLE_RESULTS.read_text(encoding="utf-8"))
+            saved_search = json.loads(TITLE_RESULTS.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return json_response({"words": None, "works": []})
         works = []
-        for number, fields in enumerate(results.get("papers") or []):
+        for number, fields in enumerate(saved_search.get("papers") or []):
             paper = Paper(**fields)
             works.append({**work_data(paper), "number": number, "in_calibre": paper.in_calibre,
                           "has_link": bool(paper.pdf_urls)})
-        return json_response({"words": results.get("words"), "works": works})
+        return json_response({"words": saved_search.get("words"), "works": works})
 
     async def send_bibliography(self, request: web.Request) -> web.Response:
         """A bibliography sent as a file or pasted as text: it is saved and its works are downloaded."""
@@ -538,8 +538,8 @@ def now_text() -> str:
 NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
-def json_response(data: dict) -> web.Response:
-    return web.json_response(data, headers=NO_STORE, dumps=lambda value: json.dumps(value, ensure_ascii=False))
+def json_response(content: dict) -> web.Response:
+    return web.json_response(content, headers=NO_STORE, dumps=lambda value: json.dumps(value, ensure_ascii=False))
 
 
 def refuse(message: str) -> web.Response:

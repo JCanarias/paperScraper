@@ -62,10 +62,10 @@ class WikimediaCommonsSource(BookSource):
         return [book for book in map(self._build_book, ordered) if book]
 
     def _build_book(self, page: dict) -> Paper | None:
-        info = (page.get("imageinfo") or [{}])[0]
-        if info.get("mime") not in KEPT_TYPES or not info.get("url"):
+        image_info = (page.get("imageinfo") or [{}])[0]
+        if image_info.get("mime") not in KEPT_TYPES or not image_info.get("url"):
             return None
-        metadata = info.get("extmetadata") or {}
+        metadata = image_info.get("extmetadata") or {}
         artist = plain_text(metadata.get("Artist", {}).get("value", ""))
         title = page["title"].removeprefix("File:").rsplit(".", 1)[0]
         title = COPY_ID.sub("", title).replace("_", " ").strip()
@@ -74,7 +74,7 @@ class WikimediaCommonsSource(BookSource):
             year=self._year(plain_text(metadata.get("DateTimeOriginal", {}).get("value", "")), title),
             doi=None,
             # Without the "?utm_source=..." the API adds for its statistics.
-            pdf_urls=[info["url"].split("?")[0]],
+            pdf_urls=[image_info["url"].split("?")[0]],
             authors=[readable_name(name) for name in self._authors(artist)],
             source=self.name,
             identifiers={"commons": str(page.get("pageid", ""))},

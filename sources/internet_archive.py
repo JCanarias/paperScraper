@@ -30,15 +30,15 @@ class InternetArchiveSource(BookSource):
         words = name_words(author_name)
         if not words:
             return []
-        return self._search(f"creator:({words[-1]})", limit * AUTHOR_RESULTS_FACTOR, limit, lambda item: any(
-            same_author(author_name, creator) for creator in creators(item)
+        return self._search(f"creator:({words[-1]})", limit * AUTHOR_RESULTS_FACTOR, limit, lambda archive_record: any(
+            same_author(author_name, creator) for creator in creators(archive_record)
         ))
 
     def search_books_by_title(self, words: str, limit: int) -> list[Paper]:
-        return self._search(f"title:({clean_words(words)})", limit, limit, lambda item: True)
+        return self._search(f"title:({clean_words(words)})", limit, limit, lambda archive_record: True)
 
     def search_books_by_isbn(self, isbn: str, limit: int) -> list[Paper]:
-        return self._search(f"isbn:({clean_words(isbn)})", limit, limit, lambda item: True)
+        return self._search(f"isbn:({clean_words(isbn)})", limit, limit, lambda archive_record: True)
 
     def _search(self, query: str, rows: int, limit: int, keep: Callable[[dict], bool]) -> list[Paper]:
         excluded = " AND ".join(f"-collection:{collection}" for collection in LENDING_COLLECTIONS)
@@ -49,13 +49,15 @@ class InternetArchiveSource(BookSource):
             "output": "json",
         }, timeout=TIMEOUT_SECONDS)
         response.raise_for_status()
-        items = [item for item in response.json()["response"]["docs"] if keep(item)][:limit]
+        archive_records = [record for record in response.json()["response"]["docs"] if keep(record)][:limit]
 
         # The file names change from one book to another, so we ask for each book's list of files.
         with ThreadPoolExecutor(PARALLEL_REQUESTS) as executor:
-            file_urls = list(executor.map(self._find_file_urls, [item["identifier"] for item in items]))
+            identifiers = [archive_record["identifier"] for archive_record in archive_records]
+            file_urls = list(executor.map(self._find_file_urls, identifiers))
 
-        return [self._build_book(item, urls) for item, urls in zip(items, file_urls) if urls]
+        return [self._build_book(archive_record, urls)
+                for archive_record, urls in zip(archive_records, file_urls) if urls]
 
     def _find_file_urls(self, identifier: str) -> list[str]:
         try:
@@ -72,19 +74,19 @@ class InternetArchiveSource(BookSource):
                     urls.append(f"{INTERNET_ARCHIVE_URL}/download/{identifier}/{file['name']}")
         return urls
 
-    def _build_book(self, item: dict, urls: list[str]) -> Paper:
-        year = first(item.get("date"), "")[:4]
+    def _build_book(self, archive_record: dict, urls: list[str]) -> Paper:
+        year = first(archive_record.get("date"), "")[:4]
         return Paper(
-            title=first(item.get("title"), "(sin título)"),
+            title=first(archive_record.get("title"), "(sin título)"),
             year=int(year) if year.isdigit() else None,
             doi=None,
             pdf_urls=urls,
-            authors=creators(item),
-            publisher=first(item.get("publisher"), None),
-            language=first(item.get("language"), None),
-            isbn=clean_isbn(first(item.get("isbn"), None)),
+            authors=creators(archive_record),
+            publisher=first(archive_record.get("publisher"), None),
+            language=first(archive_record.get("language"), None),
+            isbn=clean_isbn(first(archive_record.get("isbn"), None)),
             source=self.name,
-            identifiers={"internet_archive": item["identifier"]},
+            identifiers={"internet_archive": archive_record["identifier"]},
         )
 
 
@@ -93,9 +95,9 @@ def clean_words(words: str) -> str:
     return re.sub(r'[():"\[\]{}^~*?\\]', " ", words)
 
 
-def creators(item: dict) -> list[str]:
+def creators(archive_record: dict) -> list[str]:
     # Several authors can come in one value, separated by ";" ("Jaffrey, Jess; Brown, Horace").
-    names = [name for value in as_list(item.get("creator")) for name in value.split(";")]
+    names = [name for value in as_list(archive_record.get("creator")) for name in value.split(";")]
     return [readable_name(name) for name in names if name.strip()]
 
 

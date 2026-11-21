@@ -114,9 +114,9 @@ def replace_file_in_zip(epub: zipfile.ZipFile, epub_path: Path, name: str, conte
     # A ZIP file can't be edited in place, so we copy everything to a new file and swap them.
     temporary_path = epub_path.with_suffix(".tmp")
     with zipfile.ZipFile(temporary_path, "w") as new_epub:
-        for item in epub.infolist():
-            data = content if item.filename == name else epub.read(item.filename)
+        for entry in epub.infolist():
+            entry_content = content if entry.filename == name else epub.read(entry.filename)
             # The "mimetype" entry must stay first and uncompressed; the original order keeps it first.
-            new_epub.writestr(item, data, compress_type=item.compress_type)
+            new_epub.writestr(entry, entry_content, compress_type=entry.compress_type)
     epub.close()
     os.replace(temporary_path, epub_path)

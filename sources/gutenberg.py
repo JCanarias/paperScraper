@@ -45,25 +45,25 @@ class GutenbergSource(BookSource):
                 break
             response = requests.get(url, params=params, timeout=TIMEOUT_SECONDS)
             response.raise_for_status()
-            data = response.json()
-            found = (self._build_book(result) for result in data["results"])
+            page = response.json()
+            found = (self._build_book(book_record) for book_record in page["results"])
             books.extend(book for book in found if book.pdf_urls and keep(book))
-            url = data["next"]
+            url = page["next"]
             params = None
 
         return books[:limit]
 
-    def _build_book(self, result: dict) -> Paper:
-        formats = result["formats"]
+    def _build_book(self, book_record: dict) -> Paper:
+        formats = book_record["formats"]
         urls = [formats[file_type] for file_type in (EPUB, PDF) if file_type in formats]
         return Paper(
-            title=result["title"],
+            title=book_record["title"],
             # Gutenberg doesn't say when the book was first published.
             year=None,
             doi=None,
             pdf_urls=urls,
-            authors=[readable_name(author["name"]) for author in result["authors"]],
-            language=(result["languages"] or [None])[0],
+            authors=[readable_name(author["name"]) for author in book_record["authors"]],
+            language=(book_record["languages"] or [None])[0],
             source=self.name,
-            identifiers={"gutenberg": str(result["id"])},
+            identifiers={"gutenberg": str(book_record["id"])},
         )

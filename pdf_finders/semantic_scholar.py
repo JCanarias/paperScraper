@@ -27,25 +27,25 @@ class SemanticScholarFinder(DoiPdfFinder):
 
         for start in range(0, len(dois), MAX_DOIS_PER_REQUEST):
             dois_group = dois[start:start + MAX_DOIS_PER_REQUEST]
-            results = self._request_papers(dois_group)
+            paper_records = self._request_papers(dois_group)
 
             # Results come in the same order as the DOIs we sent.
-            # A result is None when Semantic Scholar doesn't know that paper.
-            for doi, result in zip(dois_group, results):
-                urls = self._pdf_urls(doi, result)
+            # The record is None when Semantic Scholar doesn't know that paper.
+            for doi, paper_record in zip(dois_group, paper_records):
+                urls = self._pdf_urls(doi, paper_record)
                 if urls:
                     pdf_urls[doi] = urls
 
         return pdf_urls
 
-    def _pdf_urls(self, doi: str, result: dict | None) -> list[str]:
+    def _pdf_urls(self, doi: str, paper_record: dict | None) -> list[str]:
         urls = []
         if doi.lower().startswith(ARXIV_DOI_PREFIX):
             urls.append(ARXIV_PDF_URL.format(doi[len(ARXIV_DOI_PREFIX):]))
-        if result:
-            if result["openAccessPdf"] and result["openAccessPdf"]["url"]:
-                urls.append(result["openAccessPdf"]["url"])
-            arxiv_id = (result["externalIds"] or {}).get("ArXiv")
+        if paper_record:
+            if paper_record["openAccessPdf"] and paper_record["openAccessPdf"]["url"]:
+                urls.append(paper_record["openAccessPdf"]["url"])
+            arxiv_id = (paper_record["externalIds"] or {}).get("ArXiv")
             if arxiv_id:
                 urls.append(ARXIV_PDF_URL.format(arxiv_id))
         # The same link can come from two places.

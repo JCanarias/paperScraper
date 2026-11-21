@@ -16,8 +16,8 @@ class UnpaywallFinder(DoiPdfFinder):
     def find_pdf_urls_by_doi(self, dois: list[str]) -> dict[str, list[str]]:
         print(f"[UNPAYWALL] Buscando {len(dois)} DOIs...")
         with ThreadPoolExecutor(PARALLEL_REQUESTS) as executor:
-            results = executor.map(self._find_for_doi, dois)
-            pdf_urls = {doi: urls for doi, urls in zip(dois, results) if urls}
+            urls_by_doi = executor.map(self._find_for_doi, dois)
+            pdf_urls = {doi: urls for doi, urls in zip(dois, urls_by_doi) if urls}
         print(f"[UNPAYWALL] ✓ {len(pdf_urls)}/{len(dois)} con PDF")
         return pdf_urls
 

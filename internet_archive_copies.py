@@ -53,16 +53,16 @@ def hathitrust_copies(volume: str) -> list[str]:
     years = {date[:4] for record in records for date in record.get("publishDates", [])}
     if not oclcs or not years:
         return []
-    items = search(" OR ".join(f"oclc-id:{number}" for number in oclcs))
-    return [item["identifier"] for item in items
-            if str(item.get("date", ""))[:4] in years and not item.get("volume")]
+    archive_records = search(" OR ".join(f"oclc-id:{number}" for number in oclcs))
+    return [record["identifier"] for record in archive_records
+            if str(record.get("date", ""))[:4] in years and not record.get("volume")]
 
 
 def google_books_copies(google_id: str) -> list[str]:
     same_scan = re.compile(rf"[?&]id={re.escape(google_id)}(?:&|$)")
-    items = search(f'source:"{google_id}"')
-    return [item["identifier"] for item in items
-            if any(same_scan.search(source) for source in as_list(item.get("source")))]
+    archive_records = search(f'source:"{google_id}"')
+    return [record["identifier"] for record in archive_records
+            if any(same_scan.search(source) for source in as_list(record.get("source")))]
 
 
 def search(query: str) -> list[dict]:
@@ -78,4 +78,4 @@ def search(query: str) -> list[dict]:
 def as_list(value) -> list[str]:
     if value is None:
         return []
-    return [str(item) for item in value] if isinstance(value, list) else [str(value)]
+    return [str(element) for element in value] if isinstance(value, list) else [str(value)]

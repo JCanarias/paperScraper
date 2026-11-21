@@ -113,7 +113,7 @@ def find_works(references: list[Reference], source: OpenAlexSource,
     missing: list[Reference] = []
 
     with_doi = [reference for reference in references if reference.doi]
-    by_doi = {paper.doi.lower(): paper for paper in source.get_papers_by_dois([r.doi for r in with_doi])}
+    by_doi = {paper.doi.lower(): paper for paper in source.get_papers_by_dois([reference.doi for reference in with_doi])}
 
     for number, reference in enumerate(references, start=1):
         print(f"  [{number}/{len(references)}] {reference.text[:90]}", end=" ", flush=True)
@@ -174,15 +174,16 @@ def crossref_doi(query: str, reference: Reference) -> str | None:
     except requests.RequestException:
         return None
 
-    for item in response.json()["message"]["items"]:
-        if item.get("score", 0) < MIN_CROSSREF_SCORE:
+    for crossref_work in response.json()["message"]["items"]:
+        if crossref_work.get("score", 0) < MIN_CROSSREF_SCORE:
             continue
         candidate = Paper(
-            title=(item.get("title") or [""])[0], year=None, doi=item["DOI"], pdf_urls=[],
-            authors=[f"{a.get('given', '')} {a.get('family', '')}".strip() for a in item.get("author", [])],
+            title=(crossref_work.get("title") or [""])[0], year=None, doi=crossref_work["DOI"], pdf_urls=[],
+            authors=[f"{author.get('given', '')} {author.get('family', '')}".strip()
+                     for author in crossref_work.get("author", [])],
         )
         if matches(candidate, reference):
-            return item["DOI"]
+            return crossref_work["DOI"]
     return None
 
 

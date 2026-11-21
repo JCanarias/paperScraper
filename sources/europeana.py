@@ -50,29 +50,29 @@ class EuropeanaSource(BookSource):
             "rows": min(rows, MAX_ROWS), "profile": "rich",
         }, headers=HEADERS, timeout=TIMEOUT_SECONDS)
         response.raise_for_status()
-        return [paper for item in response.json().get("items", []) if (paper := item_to_paper(item))]
+        return [paper for record in response.json().get("items", []) if (paper := record_to_paper(record))]
 
 
 def clean(text: str) -> str:
     return re.sub(r'["()\\:]', " ", text).strip()
 
 
-def item_to_paper(item: dict) -> Paper | None:
-    rights = " ".join(item.get("rights") or [])
-    provider = (item.get("dataProvider") or [""])[0]
+def record_to_paper(record: dict) -> Paper | None:
+    rights = " ".join(record.get("rights") or [])
+    provider = (record.get("dataProvider") or [""])[0]
     if not any(free in rights for free in FREE_RIGHTS) or provider in OWN_SOURCE_PROVIDERS:
         return None
-    title = (item.get("title") or [""])[0].strip()
-    urls = [*(item.get("edmIsShownBy") or []), *(item.get("edmIsShownAt") or [])]
+    title = (record.get("title") or [""])[0].strip()
+    urls = [*(record.get("edmIsShownBy") or []), *(record.get("edmIsShownAt") or [])]
     if not title or not urls:
         return None
     # The creators come as names and as links to Europeana's own record of each person.
-    authors = list(dict.fromkeys(readable_name(name) for name in item.get("dcCreator") or []
+    authors = list(dict.fromkeys(readable_name(name) for name in record.get("dcCreator") or []
                                  if not name.startswith("http")))
-    year = next((int(match.group()) for value in item.get("year") or []
+    year = next((int(match.group()) for value in record.get("year") or []
                  if (match := re.search(r"\d{4}", value))), None)
     return Paper(
         title=title, year=year, doi=None, pdf_urls=list(dict.fromkeys(urls)), authors=authors,
-        language=language_code((item.get("language") or [None])[0]), publisher=provider or None,
-        source="Europeana", identifiers={"europeana": item.get("id", "").strip("/")},
+        language=language_code((record.get("language") or [None])[0]), publisher=provider or None,
+        source="Europeana", identifiers={"europeana": record.get("id", "").strip("/")},
     )

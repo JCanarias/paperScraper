@@ -31,14 +31,14 @@ def send_message(text: str, buttons: list[tuple[str, str]] | None = None) -> boo
         return False
     # When the bot uses its own Bot API server, the public one no longer answers for it.
     api_url = (settings.get("TELEGRAM_LOCAL_API_URL") or "").strip().rstrip("/") or PUBLIC_API_URL
-    data = {"text": text[:MAX_MESSAGE_LENGTH], "disable_web_page_preview": "true"}
+    message_fields = {"text": text[:MAX_MESSAGE_LENGTH], "disable_web_page_preview": "true"}
     if buttons:
-        data["reply_markup"] = json.dumps(
+        message_fields["reply_markup"] = json.dumps(
             {"inline_keyboard": [[{"text": label, "callback_data": value} for label, value in buttons]]})
     sent = False
     for chat_id in recipients:
         try:
-            response = requests.post(f"{api_url}/bot{token}/sendMessage", data={"chat_id": chat_id, **data},
+            response = requests.post(f"{api_url}/bot{token}/sendMessage", data={"chat_id": chat_id, **message_fields},
                                      timeout=TIMEOUT_SECONDS)
             response.raise_for_status()
             sent = True
