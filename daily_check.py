@@ -15,6 +15,7 @@ The tower runs it every day at 6:00 (the "daily" container, tower/scheduler.py).
     docker compose exec daily python daily_check.py
 """
 import datetime as dt
+import os
 import re
 import sys
 import time
@@ -38,14 +39,10 @@ from telegram_notify import send_message
 
 # The longest wait between two searches for the file of a work that keeps failing.
 MAX_DAYS_BETWEEN_CHECKS = 30
-# Asking OpenAlex for all the works of every author and searching every library takes about an hour each
-# day (2026-11-16: an hour with only 6 works to look for). So each author gets that full search once a week,
-# on a day of its own so they don't all fall on the same one; the other days, only the works published
-# lately. (OpenAlex's filter by the day a work was added is only for paying members.)
-FULL_SEARCH_EVERY_DAYS = 7
-# Works published since this many days ago are looked for every day.
-RECENT_WORKS_DAYS = 2 * 365
-LAST_FULL_SEARCH_KEY = "last_full_search"
+# When the author's last check started. The authors that waited longest go first, so the ones a check
+# didn't reach (it was stopped, or killed: 2026-11-19 to 21) are checked first the next day, and an author
+# whose check kills the program goes last instead of stopping every check.
+LAST_CHECK_STARTED_KEY = "last_check_started"
 # What the daily check leaves of the OpenAlex key's daily budget (1 $ for a free key), for the menu.
 OPENALEX_BUDGET_LEFT_FOR_MENU_USD = 0.30
 # The lines of the check that tell about a problem (a source that fails, a catalogue not updated...).
@@ -112,54 +109,36 @@ def followed_lists() -> list[Path]:
             if load_content(papers_file).get("follow")]
 
 
-def check_author(source: OpenAlexSource, papers_file: Path, position: int = 0) -> None:
+def longest_waiting_first(lists: list[Path]) -> list[Path]:
+    """The authors never checked, then the rest from the one whose last check started earliest;
+    those with the same time keep their alphabetical order."""
+    return sorted(lists, key=lambda papers_file: load_content(papers_file).get(LAST_CHECK_STARTED_KEY) or "")
+
+
+def check_author(source: OpenAlexSource, papers_file: Path) -> None:
     folder = papers_file.parent
     content = load_content(papers_file)
     papers = load_papers(papers_file)
     started = time.monotonic()
+    set_content_value(papers_file, LAST_CHECK_STARTED_KEY, dt.datetime.now().isoformat(timespec="seconds"))
     print(f"\n{'=' * 60}\n{folder.name}  [{dt.datetime.now():%H:%M}]\n{'=' * 60}")
     task_progress.group(re.sub(r"\s*\([^)]*\)$", "", folder.name))
     # The languages chosen when this author was searched (or the general ones).
     try:
         with using_languages(content.get("language_choice")):
             print(f"Idiomas: {languages_label()}")
-            check_author_works(source, papers_file, content, papers, position)
+            check_author_works(source, papers_file, content, papers)
     finally:
         print(f"[{folder.name}: {(time.monotonic() - started) / 60:.1f} min]")
 
 
-def full_search_today(content: dict, today: dt.date, position: int) -> bool:
-    """Whether the author gets the full search today: on its own day of the week (from its place in the
-    list of followed authors, so each day gets about as many), or when the last one is older than two
-    weeks, or there was none."""
-    try:
-        last = dt.date.fromisoformat(content.get(LAST_FULL_SEARCH_KEY) or "")
-    except ValueError:
-        return True
-    days = (today - last).days
-    if days >= 2 * FULL_SEARCH_EVERY_DAYS:
-        return True
-    return days > 0 and today.toordinal() % FULL_SEARCH_EVERY_DAYS == position % FULL_SEARCH_EVERY_DAYS
-
-
-def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict, papers: list[Paper],
-                       position: int = 0) -> None:
+def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict, papers: list[Paper]) -> None:
     folder = papers_file.parent
     today = dt.date.today()
     # A work that gets new links today (a new copy found) is tried today, whatever it failed before.
     links_before = {id(paper): len(paper.pdf_urls) for paper in papers}
-    full = full_search_today(content, today, position)
-    if full:
-        print("Búsqueda completa (OpenAlex y bibliotecas)")
-    else:
-        print(f"Búsqueda rápida: obras de OpenAlex de los últimos {RECENT_WORKS_DAYS // 365} años "
-              f"(la completa, una vez por semana)")
     try:
-        since = None if full else today - dt.timedelta(days=RECENT_WORKS_DAYS)
-        found = keep_chosen_languages(merge_duplicates(
-            main.find_author_works(source, author_profiles(content), published_since=since)))
-        if full:
-            set_content_value(papers_file, LAST_FULL_SEARCH_KEY, today.isoformat())
+        found = keep_chosen_languages(merge_duplicates(main.find_author_works(source, author_profiles(content))))
     except Exception as error:
         # Without the new search, the pending works of the list are still looked for.
         print(f"Aviso: no se han podido buscar obras nuevas: {error}")
@@ -200,11 +179,18 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
         print(f"Pendientes de archivo: {len(pending)}; se buscan hoy {len(due)} "
               f"(las que fallaron hace poco esperan unos días)")
         if due:
+            # Counted as failed before trying and saved: a download that kills the program (memory,
+            # 2026-11-19 to 21) would otherwise be tried again first thing every day and kill every check.
+            before = {id(paper): (paper.failed_checks, paper.last_check) for paper in due}
+            for paper in due:
+                paper.failed_checks += 1
+                paper.last_check = today.isoformat()
+            update_papers(papers_file, papers)
             main.find_and_download_pdfs(due, folder)
             for paper in due:
-                if not is_downloaded(paper, folder):
-                    paper.failed_checks += 1
-                    paper.last_check = today.isoformat()
+                # A file sent to Calibre is no longer in the folder.
+                if is_downloaded(paper, folder) or paper.sent_to_calibre:
+                    paper.failed_checks, paper.last_check = before[id(paper)]
     finally:
         for paper in papers:
             paper.downloaded = is_downloaded(paper, folder)
@@ -266,6 +252,8 @@ def on_download(paper: Paper, folder: Path) -> None:
             report.in_calibre += state in ("uploaded", "kept")
         except Exception as error:
             calibre_state = f"No se ha podido subir a Calibre: {error}"
+    elif os.environ.get("CALIBRE_URL", "").strip():
+        calibre_state = "Calibre no responde; está en la carpeta y se subirá en la próxima revisión."
     else:
         calibre_state = "No hay Calibre configurado; está en la carpeta."
     # The log of the check says it too, not only Telegram.
@@ -364,9 +352,9 @@ def main_check() -> None:
         # The answers given in Telegram since the last check.
         accepted = apply_decisions()
         source = OpenAlexSource()
-        for position, papers_file in enumerate(lists):
+        for papers_file in longest_waiting_first(lists):
             try:
-                check_author(source, papers_file, position)
+                check_author(source, papers_file)
             except Exception:
                 # One author that fails doesn't stop the others.
                 traceback.print_exc()

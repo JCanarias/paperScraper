@@ -367,6 +367,11 @@ def find_books(search: Callable[[BookSource], list[Paper]]) -> list[Paper]:
             # every following search wait again, so it is skipped until the program restarts.
             UNREACHABLE_SOURCES.add(book_source.name)
             print(f"no responde; se salta en el resto de búsquedas ({type(found).__name__})")
+        elif isinstance(found, browser_session.BrowserError):
+            # A library that blocks the browser (HathiTrust, 2026-11-20) keeps blocking it for a while,
+            # and each attempt costs about 20 s.
+            UNREACHABLE_SOURCES.add(book_source.name)
+            print(f"ha fallado ({found}); se salta en el resto de búsquedas")
         elif isinstance(found, Exception):
             print(f"ha fallado ({found})")
         else:
@@ -519,22 +524,15 @@ def download_author_works(source: OpenAlexSource, selected_authors: list[Author]
         print(f"✓ Lista guardada en {papers_file}\n")
 
 
-def find_author_works(source: OpenAlexSource, profiles: list[Author],
-                      published_since: dt.date | None = None) -> list[Paper]:
-    """Every work of these OpenAlex profiles (one person), and the books under their names.
-
-    With `published_since`, only OpenAlex's works published since that day, and no other library:
-    the daily check's quick look between two full searches.
-    """
+def find_author_works(source: OpenAlexSource, profiles: list[Author]) -> list[Paper]:
+    """Every work of these OpenAlex profiles (one person), and the books under their names."""
     papers: list[Paper] = []
     task_progress.step("Buscando sus obras en OpenAlex")
     started = time.monotonic()
     for author in profiles:
-        papers += source.get_papers(author, published_since)
+        papers += source.get_papers(author)
     openalex_count = len(papers)
     print(f"OpenAlex: {openalex_count} obras ({time.monotonic() - started:.0f} s)")
-    if published_since:
-        return papers
     for name in dict.fromkeys(author.name for author in profiles):
         papers += find_books(lambda book_source: book_source.search_books_by_author(name, MAX_BOOKS_PER_SOURCE))
     print(f"\nSe han encontrado {openalex_count} obras en OpenAlex y "

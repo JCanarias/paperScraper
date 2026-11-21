@@ -36,6 +36,37 @@ class LocalIndex:
             );
             CREATE TABLE IF NOT EXISTS state (source TEXT, key TEXT, value TEXT, PRIMARY KEY (source, key));
         """)
+        self._add_title_index()
+
+    def _add_title_index(self) -> None:
+        """A full-text index of the title words. Searching them with LIKE read the whole table each time,
+        about a second per title, and the daily check looks for thousands of titles (2026-11-21).
+
+        The triggers keep it up to date; with recursive_triggers, also when INSERT OR REPLACE deletes the
+        old record. It points to the rowids of `works`, which a VACUUM could change: rebuild it after one
+        (INSERT INTO works_titles(works_titles) VALUES ('rebuild')).
+        """
+        exists = self.database.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'works_titles'",
+        ).fetchone()
+        self.database.executescript("""
+            PRAGMA recursive_triggers = ON;
+            CREATE VIRTUAL TABLE IF NOT EXISTS works_titles
+                USING fts5(title_words, content='works', content_rowid='rowid');
+            CREATE TRIGGER IF NOT EXISTS works_titles_insert AFTER INSERT ON works BEGIN
+                INSERT INTO works_titles(rowid, title_words) VALUES (new.rowid, new.title_words);
+            END;
+            CREATE TRIGGER IF NOT EXISTS works_titles_delete AFTER DELETE ON works BEGIN
+                INSERT INTO works_titles(works_titles, rowid, title_words) VALUES ('delete', old.rowid, old.title_words);
+            END;
+            CREATE TRIGGER IF NOT EXISTS works_titles_update AFTER UPDATE ON works BEGIN
+                INSERT INTO works_titles(works_titles, rowid, title_words) VALUES ('delete', old.rowid, old.title_words);
+                INSERT INTO works_titles(rowid, title_words) VALUES (new.rowid, new.title_words);
+            END;
+        """)
+        if not exists:
+            with self.database:
+                self.database.execute("INSERT INTO works_titles(works_titles) VALUES ('rebuild')")
 
     def save(self, records: list[dict]) -> None:
         """Add or replace records; each one is a dict with "id" and some of FIELDS."""
@@ -86,10 +117,14 @@ class LocalIndex:
         wanted = title_words(words)
         if not wanted:
             return []
-        conditions = " AND ".join("title_words LIKE ?" for _ in wanted)
+        # Every word, each one quoted so that none is read as an operator (AND, NOT, NEAR...).
+        query = " ".join('"' + word.replace('"', '""') + '"' for word in wanted)
+        # The title index goes first; the unary + keeps SQLite from going through every record of the
+        # source (its primary key starts with it) and checking the title of each one.
         rows = self.database.execute(
-            f"SELECT * FROM works WHERE source = ? AND {conditions} LIMIT ?",
-            (self.source, *[f"% {word} %" for word in wanted], limit),
+            "SELECT * FROM works WHERE rowid IN (SELECT rowid FROM works_titles WHERE works_titles MATCH ?) "
+            "AND +source = ? LIMIT ?",
+            (query, self.source, limit),
         )
         return [self._record(row) for row in rows]
 
