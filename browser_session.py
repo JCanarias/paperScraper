@@ -29,7 +29,8 @@ TURNSTILE_BOX = ".cf-turnstile, div[class*=turnstile]"
 DOWNLOAD_TIMEOUT_SECONDS = 300
 # A big file (a whole book) can take longer: the wait goes on while it keeps growing, up to this.
 LONGEST_DOWNLOAD_SECONDS = 1800
-# The whole file is then kept in memory (downloader.py, which uses the same limit, says why).
+# The whole file is then kept in memory (downloader.py, which uses the same limit, says why). Chrome writes
+# it to the disk while it comes, so its size is checked there, and it isn't read if it is larger.
 MAX_FILE_BYTES = 300_000_000
 PAGE_BUILD_SECONDS = 15
 # A file starts downloading within this time after the page has passed the check; if not, it's a page.
@@ -119,13 +120,11 @@ def _wait_for_file(driver, url: str) -> tuple[bytes | None, str]:
         current = _folder_size()
         if current != size:
             size, last_growth = current, time.monotonic()
+        # Stopped while it is still coming: a whole book of several hundred MB took 12 minutes (2026-11-21).
+        if current > MAX_FILE_BYTES:
+            raise FileTooLarge()
         finished = [f for f in files if not f.name.endswith(".crdownload") and f.stat().st_size > 0]
         if finished and not any(f.name.endswith(".crdownload") for f in files):
-            # As in downloader.limited_content: a file too large for the memory isn't read.
-            # Chrome writes it to the disk, so only its size is looked at.
-            if finished[0].stat().st_size > MAX_FILE_BYTES:
-                finished[0].unlink()
-                raise FileTooLarge()
             content = finished[0].read_bytes()
             finished[0].unlink()
             return content, ""

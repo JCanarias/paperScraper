@@ -1,5 +1,6 @@
 import html
 import re
+import time
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -24,6 +25,18 @@ DOWNLOAD_TIMEOUT_SECONDS = 120
 # scanned books; a larger file is left for downloading by hand.
 MAX_DOWNLOAD_BYTES = browser_session.MAX_FILE_BYTES
 DOWNLOAD_CHUNK_BYTES = 1_000_000
+# A server that sends a file very slowly never reaches the timeout of each read: the whole file gets this
+# long. The books that come well take up to two minutes.
+LONGEST_DOWNLOAD_SECONDS = 600
+# The websites that didn't answer, or were too slow, in this run: their other links aren't tried until
+# the program starts again. The letters of the Girona archive took 5 to 20 minutes each (2026-11-21).
+UNRESPONSIVE_HOSTS: set[str] = set()
+
+
+class UnresponsiveHost(Exception):
+    """A redirect to one of UNRESPONSIVE_HOSTS, stopped before waiting for it again."""
+
+
 # The tags that point to the file are in the <head>, at the start of the page.
 PAGE_HEAD_LENGTH = 200_000
 MAX_FILENAME_LENGTH = 150
@@ -69,7 +82,8 @@ def download_paper(paper: Paper, folder: Path, urls: list[str]) -> bool:
         return True
 
     for url in urls:
-        if (urlparse(url).hostname or "").endswith(MANUAL_ONLY_HOSTS):
+        host = urlparse(url).hostname or ""
+        if host.endswith(MANUAL_ONLY_HOSTS) or host in UNRESPONSIVE_HOSTS:
             continue
         try:
             download_file(url, paper, folder)
@@ -164,14 +178,13 @@ def fetch(url: str) -> tuple[bytes, str, str]:
         content, page = browser_session.download(url)
         return content or b"", page, url
     headers = headers_for(url)
-    # Streamed, so that a file too large is stopped before it fills the memory (limited_content).
-    response = requests.get(url, headers=headers, timeout=DOWNLOAD_TIMEOUT_SECONDS, stream=True)
+    response = get_streamed(url, headers)
     # Anubis, and some other filters (Zenodo), stop the programs that pass for a browser but let in
     # the ones that say who they are: asked again once with the program's own name.
     if headers is HEADERS and not behind_cloudflare_check(response) and (
             response.status_code in (403, 429) or page_title(response).startswith(BROWSER_CHECK_TITLES)):
         response.close()
-        response = requests.get(url, headers=HONEST_HEADERS, timeout=DOWNLOAD_TIMEOUT_SECONDS, stream=True)
+        response = get_streamed(url, HONEST_HEADERS)
     # The same check on a website not in the list, or reached through a redirect (doi.org,
     # hdl.handle.net): the browser opens the address where the check was, only then.
     if browser_session.needs_browser(response.url) or behind_browser_check(response):
@@ -183,17 +196,46 @@ def fetch(url: str) -> tuple[bytes, str, str]:
     return limited_content(response), "", response.url
 
 
+def get_streamed(url: str, headers: dict[str, str]) -> requests.Response:
+    """The answer, with its file not read yet: a file too large is stopped before it fills the memory
+    (limited_content). A website that doesn't answer is skipped for the rest of the run, also when it
+    is reached through a redirect (hdl.handle.net, doi.org)."""
+    def refuse_unresponsive(response: requests.Response, *args, **kwargs) -> None:
+        next_host = urlparse(response.headers.get("location") or "").hostname
+        if response.is_redirect and next_host in UNRESPONSIVE_HOSTS:
+            raise UnresponsiveHost(f"{next_host} no ha respondido antes")
+
+    try:
+        return requests.get(url, headers=headers, timeout=DOWNLOAD_TIMEOUT_SECONDS, stream=True,
+                            hooks={"response": refuse_unresponsive})
+    except (requests.Timeout, requests.ConnectionError) as error:
+        # After a redirect, the website that failed is the last one asked.
+        failed_url = error.request.url if error.request is not None else url
+        UNRESPONSIVE_HOSTS.add(urlparse(failed_url).hostname or "")
+        raise
+
+
 def limited_content(response: requests.Response) -> bytes:
-    """The file of the answer, or an error as soon as it is larger than MAX_DOWNLOAD_BYTES."""
+    """The file of the answer, or an error as soon as it is larger than MAX_DOWNLOAD_BYTES
+    or takes longer than LONGEST_DOWNLOAD_SECONDS (then its website is skipped for the rest of the run)."""
     if int(response.headers.get("content-length") or 0) > MAX_DOWNLOAD_BYTES:
         response.close()
         raise browser_session.FileTooLarge()
+    started = time.monotonic()
     content = bytearray()
-    for chunk in response.iter_content(DOWNLOAD_CHUNK_BYTES):
-        content += chunk
-        if len(content) > MAX_DOWNLOAD_BYTES:
-            response.close()
-            raise browser_session.FileTooLarge()
+    try:
+        for chunk in response.iter_content(DOWNLOAD_CHUNK_BYTES):
+            content += chunk
+            if len(content) > MAX_DOWNLOAD_BYTES:
+                raise browser_session.FileTooLarge()
+            if time.monotonic() - started > LONGEST_DOWNLOAD_SECONDS:
+                UNRESPONSIVE_HOSTS.add(urlparse(response.url).hostname or "")
+                raise TimeoutError(f"la descarga pasa de {LONGEST_DOWNLOAD_SECONDS // 60} minutos")
+    except requests.RequestException:
+        UNRESPONSIVE_HOSTS.add(urlparse(response.url).hostname or "")
+        raise
+    finally:
+        response.close()
     return bytes(content)
 
 
