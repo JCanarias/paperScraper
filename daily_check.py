@@ -136,25 +136,61 @@ def check_author(source: OpenAlexSource, papers_file: Path) -> None:
 
 def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict, papers: list[Paper]) -> None:
     folder = papers_file.parent
-    today = dt.date.today()
     # A work that gets new links today (a new copy found) is tried today, whatever it failed before.
     links_before = {id(paper): len(paper.pdf_urls) for paper in papers}
+    new = add_new_works(papers, find_new_works(source, content))
+    if calibre_sync.connected_library:
+        leave_out_works_in_calibre(papers, folder)
+    want_new_works(new, papers, folder)
+    author_result = report.author(folder)
+    author_result.new += len(new)
+
+    pending = [paper for paper in papers
+               if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
+               and paper_language_allowed(paper)]
     try:
-        found = keep_chosen_languages(merge_duplicates(work_search.find_author_works(source, author_profiles(content))))
+        if pending:
+            found_in_catalogues = work_search.add_catalogue_copies(pending)
+            if found_in_catalogues:
+                print(f"Encontradas en los catálogos locales: {found_in_catalogues}")
+        today = dt.date.today()
+        due = [paper for paper in pending
+               if due_today(paper, today) or len(paper.pdf_urls) > links_before.get(id(paper), 0)]
+        print(f"Pendientes de archivo: {len(pending)}; se buscan hoy {len(due)} "
+              f"(las que fallaron hace poco esperan unos días)")
+        if due:
+            download_due_works(due, papers_file, papers, today)
+    finally:
+        for paper in papers:
+            paper.downloaded = is_downloaded(paper, folder)
+        update_papers(papers_file, papers)
+        author_result.pending = sum(paper.wanted and not paper.in_calibre and not paper.downloaded
+                                    and paper_language_allowed(paper) for paper in papers)
+
+
+def find_new_works(source: OpenAlexSource, content: dict) -> list[Paper]:
+    """The author's works in OpenAlex and the libraries today, in the chosen languages."""
+    try:
+        return keep_chosen_languages(merge_duplicates(work_search.find_author_works(source, author_profiles(content))))
     except Exception as error:
         # Without the new search, the pending works of the list are still looked for.
         print(f"Aviso: no se han podido buscar obras nuevas: {error}")
-        found = []
-    new = add_new_works(papers, found)
-    if calibre_sync.connected_library:
-        calibre_sync.mark_papers(papers)
-        if calibre_sync.connected_library.deleted_by_user:
-            print(f"Borradas por ti en Calibre (no se descargan): {calibre_sync.connected_library.deleted_by_user}")
-        removed = calibre_sync.remove_files_in_calibre(papers, folder)
-        if removed:
-            print(f"Borrados {removed} archivos que ya están en Calibre")
-    # As in a search by author: everything new that isn't in Calibre is downloaded, except the
-    # doubtful works, which wait for the user (asked by Telegram at the end of the check).
+        return []
+
+
+def leave_out_works_in_calibre(papers: list[Paper], folder: Path) -> None:
+    """Mark the works Calibre has (or the user deleted there), and delete the local copies it already has."""
+    calibre_sync.mark_papers(papers)
+    if calibre_sync.connected_library.deleted_by_user:
+        print(f"Borradas por ti en Calibre (no se descargan): {calibre_sync.connected_library.deleted_by_user}")
+    removed = calibre_sync.remove_files_in_calibre(papers, folder)
+    if removed:
+        print(f"Borrados {removed} archivos que ya están en Calibre")
+
+
+def want_new_works(new: list[Paper], papers: list[Paper], folder: Path) -> None:
+    """As in a search by author: everything new that isn't in Calibre is downloaded, except the
+    doubtful works, which wait for the user (asked by Telegram at the end of the check)."""
     for paper in new:
         paper.wanted = not paper.in_calibre
         if paper.wanted and doubtful(paper):
@@ -165,40 +201,25 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
             set_pending(paper)
     waiting = sum(paper.review == "pending" for paper in papers)
     print(f"Obras nuevas: {len(new)}" + (f"; dudosas por revisar: {waiting}" if waiting else ""))
-    result = report.author(folder)
-    result.new += len(new)
 
-    pending = [paper for paper in papers
-               if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
-               and paper_language_allowed(paper)]
-    try:
-        if pending:
-            found_in_catalogues = work_search.add_catalogue_copies(pending)
-            if found_in_catalogues:
-                print(f"Encontradas en los catálogos locales: {found_in_catalogues}")
-        due = [paper for paper in pending
-               if due_today(paper, today) or len(paper.pdf_urls) > links_before.get(id(paper), 0)]
-        print(f"Pendientes de archivo: {len(pending)}; se buscan hoy {len(due)} "
-              f"(las que fallaron hace poco esperan unos días)")
-        if due:
-            # Counted as failed before trying and saved: a download that kills the program (memory,
-            # 2026-11-19 to 21) would otherwise be tried again first thing every day and kill every check.
-            before = {id(paper): (paper.failed_checks, paper.last_check) for paper in due}
-            for paper in due:
-                paper.failed_checks += 1
-                paper.last_check = today.isoformat()
-            update_papers(papers_file, papers)
-            work_search.find_and_download_pdfs(due, folder)
-            for paper in due:
-                # A file sent to Calibre is no longer in the folder.
-                if is_downloaded(paper, folder) or paper.sent_to_calibre:
-                    paper.failed_checks, paper.last_check = before[id(paper)]
-    finally:
-        for paper in papers:
-            paper.downloaded = is_downloaded(paper, folder)
-        update_papers(papers_file, papers)
-        result.pending = sum(paper.wanted and not paper.in_calibre and not paper.downloaded
-                             and paper_language_allowed(paper) for paper in papers)
+
+def download_due_works(due: list[Paper], papers_file: Path, papers: list[Paper], today: dt.date) -> None:
+    """Look for the files of the works due today.
+
+    They are counted as failed and saved before trying: a download that kills the program (memory,
+    2026-11-19 to 21) would otherwise be tried again first thing every day and kill every check.
+    """
+    folder = papers_file.parent
+    before = {id(paper): (paper.failed_checks, paper.last_check) for paper in due}
+    for paper in due:
+        paper.failed_checks += 1
+        paper.last_check = today.isoformat()
+    update_papers(papers_file, papers)
+    work_search.find_and_download_pdfs(due, folder)
+    for paper in due:
+        # A file sent to Calibre is no longer in the folder.
+        if is_downloaded(paper, folder) or paper.sent_to_calibre:
+            paper.failed_checks, paper.last_check = before[id(paper)]
 
 
 def due_today(paper: Paper, today: dt.date) -> bool:
@@ -342,35 +363,11 @@ def main_check() -> None:
             print('No se sigue ningún autor (menú: "Autores que seguir").')
             return
         task_progress.groups(len(lists))
-        calibre_sync.connect()
-        # The files left in the folders because Calibre didn't answer last time (2026-11-12 and 13) go first.
-        if calibre_sync.connected_library:
-            try:
-                calibre_sync.upload_downloaded()
-            except Exception as error:
-                print(f"Aviso: no se han podido subir a Calibre los archivos pendientes: {error}")
-        work_search.DOWNLOAD_LISTENERS.append(on_download)
-        sources.openalex.budget_to_keep_usd = OPENALEX_BUDGET_LEFT_FOR_MENU_USD
+        prepare_check()
         # The answers given in Telegram since the last check.
         accepted = apply_decisions()
-        source = OpenAlexSource()
-        for papers_file in longest_waiting_first(lists):
-            try:
-                check_author(source, papers_file)
-            except Exception:
-                # One author that fails doesn't stop the others.
-                traceback.print_exc()
-                report.author(papers_file.parent).failed = True
-        # The works accepted in Telegram (before or during the check) that are still without a file.
-        for papers_file, review_ids in apply_decisions().items():
-            accepted.setdefault(papers_file, set()).update(review_ids)
-        download_accepted(accepted)
-        asked = ask_by_telegram()
-        if asked:
-            print(f"\nPreguntadas por Telegram {asked} obras dudosas.")
-        report.asked = asked or 0
-        print("\n✓ Revisión diaria terminada.")
-        send_message(report_text())
+        check_authors(lists)
+        finish_check(accepted)
         daily_reports.save(report_data("ok"))
     except KeyboardInterrupt:
         # Stopped from the panel or by hand: what it did until then is kept.
@@ -384,6 +381,43 @@ def main_check() -> None:
     finally:
         work_search.quit_finder_drivers()
         lock.close()
+
+
+def prepare_check() -> None:
+    calibre_sync.connect()
+    # The files left in the folders because Calibre didn't answer last time (2026-11-12 and 13) go first.
+    if calibre_sync.connected_library:
+        try:
+            calibre_sync.upload_downloaded()
+        except Exception as error:
+            print(f"Aviso: no se han podido subir a Calibre los archivos pendientes: {error}")
+    work_search.DOWNLOAD_LISTENERS.append(on_download)
+    sources.openalex.budget_to_keep_usd = OPENALEX_BUDGET_LEFT_FOR_MENU_USD
+
+
+def check_authors(lists: list[Path]) -> None:
+    source = OpenAlexSource()
+    for papers_file in longest_waiting_first(lists):
+        try:
+            check_author(source, papers_file)
+        except Exception:
+            # One author that fails doesn't stop the others.
+            traceback.print_exc()
+            report.author(papers_file.parent).failed = True
+
+
+def finish_check(accepted: dict[Path, set[str]]) -> None:
+    """Download the works accepted in Telegram (before or during the check), ask about the doubtful ones,
+    and send the report."""
+    for papers_file, review_ids in apply_decisions().items():
+        accepted.setdefault(papers_file, set()).update(review_ids)
+    download_accepted(accepted)
+    asked = ask_by_telegram()
+    if asked:
+        print(f"\nPreguntadas por Telegram {asked} obras dudosas.")
+    report.asked = asked or 0
+    print("\n✓ Revisión diaria terminada.")
+    send_message(report_text())
 
 
 if __name__ == "__main__":

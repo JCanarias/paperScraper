@@ -1,6 +1,7 @@
 import html
 import re
 import time
+from collections.abc import Iterable
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -39,6 +40,8 @@ class UnresponsiveHost(Exception):
 
 # The tags that point to the file are in the <head>, at the start of the page.
 PAGE_HEAD_LENGTH = 200_000
+# Their names (the one Google Scholar reads, and the ones of bepress and EPrints repositories).
+PDF_LINK_TAG_NAME = re.compile(r'name=["\'](?:citation_pdf_url|bepress_citation_pdf_url|eprints\.document_url)["\']', re.I)
 MAX_FILENAME_LENGTH = 150
 MAX_AUTHORS_IN_FILENAME = 2
 MAX_AUTHORS_LENGTH = 60
@@ -119,36 +122,48 @@ def is_downloaded(paper: Paper, folder: Path) -> bool:
 def download_file(url: str, paper: Paper, folder: Path) -> None:
     # The Munich library makes its PDFs on request, through a form (mdz.py).
     if mdz.is_mdz_link(url):
-        content = mdz.download_pdf(url)
-        if file_extension(content) is None:
-            raise ValueError("la Biblioteca de Múnich no ha dado un PDF")
-        save_file(content, "pdf", paper, folder)
+        save_file(munich_pdf(url), "pdf", paper, folder)
         return
     if gallica_pages.is_gallica_link(url):
         save_file(gallica_pages.download_pdf(url), "pdf", paper, folder)
         return
     # HathiTrust and Google don't let programs download; the same scan in Internet Archive does.
     if internet_archive_copies.is_hathitrust_link(url) or internet_archive_copies.is_google_books_link(url):
-        for copy_url in internet_archive_copies.copy_urls(url):
-            try:
-                download_file(copy_url, paper, folder)
-                return
-            except Exception:
-                continue
-        raise ValueError("no hay copia del libro en Internet Archive")
+        download_first_copy(internet_archive_copies.copy_urls(url), paper, folder,
+                            "no hay copia del libro en Internet Archive")
+        return
     if (urlparse(url).hostname or "").endswith(NOT_FOLLOWED_HOSTS):
         raise ValueError("este enlace solo se abre a mano")
     # CORE's copy can't be reached; the repository it came from usually can.
     output_id = core_output_id(url)
     if output_id:
-        for source_url in source_urls(output_id):
-            try:
-                download_file(source_url, paper, folder)
-                return
-            except Exception:
-                continue
-        raise ValueError("ni CORE ni el repositorio de donde lo sacó dan el archivo")
+        download_first_copy(source_urls(output_id), paper, folder,
+                            "ni CORE ni el repositorio de donde lo sacó dan el archivo")
+        return
+    content, extension = fetch_work_file(url)
+    save_file(content, extension, paper, folder)
 
+
+def munich_pdf(url: str) -> bytes:
+    content = mdz.download_pdf(url)
+    if file_extension(content) is None:
+        raise ValueError("la Biblioteca de Múnich no ha dado un PDF")
+    return content
+
+
+def download_first_copy(copy_urls: Iterable[str], paper: Paper, folder: Path, failure_message: str) -> None:
+    """Download the first of these copies of the work that can be downloaded."""
+    for copy_url in copy_urls:
+        try:
+            download_file(copy_url, paper, folder)
+            return
+        except Exception:
+            continue
+    raise ValueError(failure_message)
+
+
+def fetch_work_file(url: str) -> tuple[bytes, str]:
+    """The work's file at the address, or at the one its page gives, and its extension."""
     content, page, page_url = fetch(url)
 
     # Repositories and journals often link to the work's page instead of its file; that page
@@ -167,8 +182,7 @@ def download_file(url: str, paper: Paper, folder: Path) -> None:
     # Some links return a web page (a login, a captcha...) instead of the file.
     if extension is None:
         raise ValueError("el enlace no devuelve un PDF ni un EPUB")
-
-    save_file(content, extension, paper, folder)
+    return content, extension
 
 
 def fetch(url: str) -> tuple[bytes, str, str]:
@@ -268,17 +282,20 @@ def save_file(content: bytes, extension: str, paper: Paper, folder: Path) -> Non
 
 def pdf_link_in_html(page: str, page_url: str) -> str | None:
     for tag in re.findall(r"<meta[^>]+>", page[:PAGE_HEAD_LENGTH], re.I):
-        if re.search(r'name=["\'](?:citation_pdf_url|bepress_citation_pdf_url|eprints\.document_url)["\']', tag, re.I):
-            link = re.search(r'content=["\']([^"\']+)["\']', tag, re.I)
-            if link:
-                address = urlparse(urljoin(page_url, html.unescape(link.group(1))))
-                # Some repositories (DSpace 7: Valencia) give their server's inner address
-                # ("http://localhost:4000/bitstreams/..."): the same path, on the page's website.
-                if address.hostname in ("localhost", "127.0.0.1"):
-                    page = urlparse(page_url)
-                    address = address._replace(scheme=page.scheme, netloc=page.netloc)
-                return address.geturl()
+        link = re.search(r'content=["\']([^"\']+)["\']', tag, re.I)
+        if link and PDF_LINK_TAG_NAME.search(tag):
+            return on_page_website(urljoin(page_url, html.unescape(link.group(1))), page_url)
     return None
+
+
+def on_page_website(link: str, page_url: str) -> str:
+    """Some repositories (DSpace 7: Valencia) give their server's inner address
+    ("http://localhost:4000/bitstreams/..."): the same path, on the page's website."""
+    address = urlparse(link)
+    if address.hostname not in ("localhost", "127.0.0.1"):
+        return link
+    page_address = urlparse(page_url)
+    return address._replace(scheme=page_address.scheme, netloc=page_address.netloc).geturl()
 
 
 def file_extension(content: bytes) -> str | None:

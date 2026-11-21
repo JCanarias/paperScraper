@@ -36,6 +36,16 @@ def test_file_extension_by_its_first_bytes(content, extension):
     assert file_extension(content) == extension
 
 
+@pytest.mark.parametrize("page, link", [
+    ('<meta name="citation_pdf_url" content="/files/a.pdf">', "https://revistas.ucm.es/files/a.pdf"),
+    ('<meta name="citation_title" content="T"><meta content="b.pdf" name="eprints.document_url">',
+     "https://revistas.ucm.es/index.php/b.pdf"),
+    ('<meta name="citation_title" content="T">', None),
+])
+def test_the_pdf_link_of_an_article_page(page, link):
+    assert pdf_link_in_html(page, "https://revistas.ucm.es/index.php/a") == link
+
+
 def test_a_pdf_link_to_the_server_itself_is_moved_to_the_page_website():
     page = '<head><meta name="citation_pdf_url" content="http://localhost:4000/bitstreams/1/download"></head>'
     assert pdf_link_in_html(page, "https://roderic.uv.es/items/1") == "https://roderic.uv.es/bitstreams/1/download"
