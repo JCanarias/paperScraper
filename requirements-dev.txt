@@ -1,0 +1,3 @@
+# Only to work on the code (tests); the program itself needs only requirements.txt.
+-r requirements.txt
+pytest
