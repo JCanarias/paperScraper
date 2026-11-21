@@ -9,8 +9,9 @@ import json
 from pathlib import Path
 
 from models import Paper
+from storage import LIBRARY_FOLDER
 
-HISTORY_FILE = Path("library") / ".history" / "downloads.jsonl"
+HISTORY_FILE = LIBRARY_FOLDER / ".history" / "downloads.jsonl"
 # Older lines are dropped when the file grows past this.
 MAX_LINES = 2000
 

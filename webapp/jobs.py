@@ -10,8 +10,9 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-LIBRARY = Path("library")
-WEB_FOLDER = LIBRARY / ".web"
+from storage import LIBRARY_FOLDER
+
+WEB_FOLDER = LIBRARY_FOLDER / ".web"
 # The last search by title: the panel shows it to choose what to download.
 TITLE_RESULTS = WEB_FOLDER / "title_results.json"
 # The bibliographies sent from the panel.
@@ -147,11 +148,11 @@ def reviews(arguments: dict) -> None:
     from storage import load_papers, update_papers, work_key
 
     # The answers given in Telegram meanwhile go first, as in the menu.
-    apply_decisions(LIBRARY)
+    apply_decisions(LIBRARY_FOLDER)
     main.connect_calibre()
     for list_path, chosen in (arguments.get("decisions") or {}).items():
-        papers_file = LIBRARY / list_path
-        if not papers_file.is_file() or not papers_file.resolve().is_relative_to(LIBRARY.resolve()):
+        papers_file = LIBRARY_FOLDER / list_path
+        if not papers_file.is_file() or not papers_file.resolve().is_relative_to(LIBRARY_FOLDER.resolve()):
             continue
         folder = papers_file.parent
         papers = load_papers(papers_file)

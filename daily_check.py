@@ -34,7 +34,8 @@ from models import Paper
 from reviews import apply_decisions, ask_by_telegram, doubtful, download_accepted, needs_review, set_pending
 from run_lock import take_daily_lock
 from sources.openalex import OpenAlexSource
-from storage import author_profiles, find_saved_lists, load_content, load_papers, set_content_value, update_papers
+from storage import (LIBRARY_FOLDER, author_profiles, find_saved_lists, load_content, load_papers,
+                     set_content_value, update_papers)
 from telegram_notify import send_message
 
 # The longest wait between two searches for the file of a work that keeps failing.
@@ -105,7 +106,7 @@ class ProblemCollector:
 
 
 def followed_lists() -> list[Path]:
-    return [papers_file for papers_file in find_saved_lists(main.LIBRARY_FOLDER)
+    return [papers_file for papers_file in find_saved_lists(LIBRARY_FOLDER)
             if load_content(papers_file).get("follow")]
 
 

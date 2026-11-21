@@ -29,23 +29,23 @@ from reviews import needs_review
 import daily_reports
 import task_progress
 from run_lock import daily_check_running
-from storage import find_saved_lists, load_content, load_papers, set_follow, update_papers, work_key
+from storage import (LIBRARY_FOLDER, find_saved_lists, load_content, load_papers, set_follow, update_papers,
+                     work_key)
 from update_indexes import INDEXED_SOURCES
 from webapp import jobs
 from webapp.jobs import BIBLIOGRAPHY_FOLDER, TASKS, TITLE_RESULTS
 
 REPO = Path(__file__).resolve().parent.parent
 STATIC = Path(__file__).resolve().parent / "static"
-LIBRARY = Path("library")
-WEB_FOLDER = LIBRARY / ".web"
+WEB_FOLDER = LIBRARY_FOLDER / ".web"
 JOB_LOG = WEB_FOLDER / "job.log"
 JOB_STATE = WEB_FOLDER / "job.json"
 JOB_ARGUMENTS = WEB_FOLDER / "job_arguments.json"
 # What the task and the daily check are doing, as numbers (task_progress.py; the second, tower/scheduler.py).
 JOB_PROGRESS = WEB_FOLDER / "job_progress.json"
 DAILY_PROGRESS = WEB_FOLDER / "daily_progress.json"
-DAILY_LOGS = LIBRARY / ".logs"
-DAILY_LAST_RUN = LIBRARY / ".daily_check.last"
+DAILY_LOGS = LIBRARY_FOLDER / ".logs"
+DAILY_LAST_RUN = LIBRARY_FOLDER / ".daily_check.last"
 DAILY_RUN_AT = dt.time(6, 0)
 LATEST_DOWNLOADS = 15
 # The reports of the daily check shown in its page: about a month.
@@ -384,7 +384,7 @@ class Panel:
             return refuse("La revisión diaria está en marcha; espera a que termine.")
         followed = set((await request.json()).get("followed") or [])
         count = 0
-        for papers_file in find_saved_lists(LIBRARY):
+        for papers_file in find_saved_lists(LIBRARY_FOLDER):
             content = load_content(papers_file)
             if "author" not in content:
                 continue
@@ -417,10 +417,10 @@ class Panel:
 
     async def library(self, request: web.Request) -> web.Response:
         folders = []
-        if LIBRARY.exists():
-            for folder in folders_with_files(LIBRARY):
+        if LIBRARY_FOLDER.exists():
+            for folder in folders_with_files(LIBRARY_FOLDER):
                 files = folder_files(folder)
-                folders.append({"path": relative(folder), "name": "library" if folder == LIBRARY else relative(folder),
+                folders.append({"path": relative(folder), "name": "library" if folder == LIBRARY_FOLDER else relative(folder),
                                 "files": len(files), "size": human_size(sum(path.stat().st_size for path in files))})
         return json_response({"folders": folders})
 
@@ -447,7 +447,7 @@ class Panel:
         papers_file, papers, paper_of = papers_by_file(folder)
         names = set(answer.get("files") or [])
         chosen = [path for path in folder_files(folder) if path.name in names]
-        deleted, errors = remove_files(chosen, LIBRARY, papers_file, papers, paper_of, bool(answer.get("forget")))
+        deleted, errors = remove_files(chosen, LIBRARY_FOLDER, papers_file, papers, paper_of, bool(answer.get("forget")))
         return json_response({"ok": not errors, "message": f"Borrados {deleted} archivos." + "".join(
             f"\n✗ {error}" for error in errors)})
 
@@ -475,7 +475,7 @@ class Panel:
 
 def load_lists() -> list[tuple[Path, dict, list]]:
     lists = []
-    for papers_file in find_saved_lists(LIBRARY) if LIBRARY.exists() else []:
+    for papers_file in find_saved_lists(LIBRARY_FOLDER) if LIBRARY_FOLDER.exists() else []:
         try:
             content = load_content(papers_file)
             lists.append((papers_file, content, load_papers(papers_file)))
@@ -496,14 +496,14 @@ def work_data(paper) -> dict:
 
 def relative(path: Path) -> str:
     """The path as the page names it: from the library's folder, with "/"."""
-    text = path.resolve().relative_to(LIBRARY.resolve()).as_posix()
+    text = path.resolve().relative_to(LIBRARY_FOLDER.resolve()).as_posix()
     return "" if text == "." else text
 
 
 def library_path(text: str) -> Path | None:
     """The path inside the library that the page names, or None if it points outside it."""
-    path = (LIBRARY / text).resolve()
-    return path if path.is_relative_to(LIBRARY.resolve()) else None
+    path = (LIBRARY_FOLDER / text).resolve()
+    return path if path.is_relative_to(LIBRARY_FOLDER.resolve()) else None
 
 
 def next_daily_run() -> str:

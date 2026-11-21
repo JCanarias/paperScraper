@@ -9,11 +9,11 @@ A search by author can choose its own languages; they are kept in the author's p
 """
 import json
 from contextlib import contextmanager
-from pathlib import Path
 
 from models import Paper
+from storage import LIBRARY_FOLDER
 
-SETTINGS_FILE = Path("library") / "settings.json"
+SETTINGS_FILE = LIBRARY_FOLDER / "settings.json"
 
 # The languages offered in the menu, in this order.
 LANGUAGE_NAMES = {

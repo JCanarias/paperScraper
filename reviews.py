@@ -22,11 +22,10 @@ from pathlib import Path
 
 from downloader import is_downloaded
 from models import Paper
-from storage import find_saved_lists, load_content, load_papers, update_papers
+from storage import LIBRARY_FOLDER, find_saved_lists, load_content, load_papers, update_papers
 
 REVIEW_SOURCES = ("Internet Archive", "Google Books")
-LIBRARY = Path("library")
-DECISIONS_FOLDER = LIBRARY / ".reviews"
+DECISIONS_FOLDER = LIBRARY_FOLDER / ".reviews"
 # More questions a day would flood the chat; the rest are asked the following days.
 MAX_QUESTIONS_PER_DAY = 20
 
@@ -77,7 +76,7 @@ def describe(paper: Paper, folder: Path | None = None) -> str:
 
 # --- Telegram -------------------------------------------------------------------------------
 
-def ask_by_telegram(library: Path = LIBRARY, limit: int = MAX_QUESTIONS_PER_DAY) -> int:
+def ask_by_telegram(library: Path = LIBRARY_FOLDER, limit: int = MAX_QUESTIONS_PER_DAY) -> int:
     """Send a question with buttons for each pending work not asked yet; return how many were sent."""
     from telegram_notify import send_message
 
@@ -103,7 +102,7 @@ def ask_by_telegram(library: Path = LIBRARY, limit: int = MAX_QUESTIONS_PER_DAY)
     return asked
 
 
-def record_decision(review_id: str, accepted: bool, library: Path = LIBRARY) -> str:
+def record_decision(review_id: str, accepted: bool, library: Path = LIBRARY_FOLDER) -> str:
     """Keep the decision taken in Telegram, to be applied under the daily lock; returns what to show."""
     found = find_by_review_id(review_id, library)
     if found is None:
@@ -122,7 +121,7 @@ def record_decision(review_id: str, accepted: bool, library: Path = LIBRARY) -> 
     return "La busco ahora; te aviso cuando la tenga."
 
 
-def find_by_review_id(review_id: str, library: Path = LIBRARY) -> tuple[Path, Paper] | None:
+def find_by_review_id(review_id: str, library: Path = LIBRARY_FOLDER) -> tuple[Path, Paper] | None:
     for papers_file in find_saved_lists(library):
         for paper in load_papers(papers_file):
             if paper.review_id == review_id:
@@ -130,7 +129,7 @@ def find_by_review_id(review_id: str, library: Path = LIBRARY) -> tuple[Path, Pa
     return None
 
 
-def apply_decisions(library: Path = LIBRARY) -> dict[Path, set[str]]:
+def apply_decisions(library: Path = LIBRARY_FOLDER) -> dict[Path, set[str]]:
     """Write the decisions taken in Telegram into the lists (call it with the daily lock taken).
 
     Returns the review ids of the accepted works, by list.
@@ -225,7 +224,7 @@ def download_now() -> None:
 
 # --- Menu -------------------------------------------------------------------------------------
 
-def review_in_menu(library: Path = LIBRARY) -> None:
+def review_in_menu(library: Path = LIBRARY_FOLDER) -> None:
     """Menu "Revisar obras dudosas": tick the ones to download; the others are rejected."""
     import main
     from run_lock import daily_check_running

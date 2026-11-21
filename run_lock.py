@@ -8,8 +8,10 @@ the machine restarts, it is gone, and the next run doesn't find an old lock left
 from pathlib import Path
 from typing import IO
 
-LOCK_FILE = Path("library") / ".daily_check.lock"
-PANEL_TASK_LOCK_FILE = Path("library") / ".web" / "task.lock"
+from storage import LIBRARY_FOLDER
+
+LOCK_FILE = LIBRARY_FOLDER / ".daily_check.lock"
+PANEL_TASK_LOCK_FILE = LIBRARY_FOLDER / ".web" / "task.lock"
 
 
 def take_daily_lock() -> IO | None:

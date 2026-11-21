@@ -13,19 +13,20 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from run_lock import panel_task_running  # noqa: E402
+from storage import LIBRARY_FOLDER  # noqa: E402
 
 RUN_AT = dt.time(6, 0)
-LAST_RUN_FILE = Path("library") / ".daily_check.last"
+LAST_RUN_FILE = LIBRARY_FOLDER / ".daily_check.last"
 TIME_ZONE = ZoneInfo(os.environ.get("TZ") or "Europe/Madrid")
 # Wake up now and then instead of sleeping until 6:00 in one go: a suspended machine or a clock
 # change would make a single long sleep end late.
 MAX_SLEEP_SECONDS = 600
 # Each check is also written here: `docker logs` loses everything when ./update.sh recreates the container.
-LOG_FOLDER = Path("library") / ".logs"
+LOG_FOLDER = LIBRARY_FOLDER / ".logs"
 LOG_DAYS = 90
 # What the check is doing, as numbers for the web panel (task_progress.py); an absolute path, since
 # daily_check.py runs from the project's folder.
-PROGRESS_FILE = (Path("library") / ".web" / "daily_progress.json").resolve()
+PROGRESS_FILE = (LIBRARY_FOLDER / ".web" / "daily_progress.json").resolve()
 PANEL_TASK_WAIT_SECONDS = 60
 
 

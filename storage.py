@@ -5,6 +5,8 @@ from pathlib import Path
 from models import Author, Paper
 from sources.names import name_words
 
+# Everything the program keeps: the authors' folders, settings, history, logs.
+LIBRARY_FOLDER = Path("library")
 PAPERS_FILENAME = "papers.json"
 
 

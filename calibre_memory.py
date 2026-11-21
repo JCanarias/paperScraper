@@ -20,7 +20,9 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-MEMORY_FILE = Path("library") / ".calibre_memory.sqlite"
+from storage import LIBRARY_FOLDER
+
+MEMORY_FILE = LIBRARY_FOLDER / ".calibre_memory.sqlite"
 
 
 class CalibreMemory:

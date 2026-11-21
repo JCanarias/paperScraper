@@ -3,9 +3,10 @@
 Every check, also a failed one, adds a line to library/.history/daily_reports.jsonl when it ends.
 """
 import json
-from pathlib import Path
 
-REPORTS_FILE = Path("library") / ".history" / "daily_reports.jsonl"
+from storage import LIBRARY_FOLDER
+
+REPORTS_FILE = LIBRARY_FOLDER / ".history" / "daily_reports.jsonl"
 # About three months of checks.
 MAX_REPORTS = 90
 

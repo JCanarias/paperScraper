@@ -42,10 +42,9 @@ from library_browser import browse_library
 from languages import (LANGUAGE_NAMES, current_choice, keep_chosen_languages, languages_label, load_settings,
                        paper_language_allowed, save_settings, using_languages)
 from run_lock import daily_check_running
-from storage import (PAPERS_FILENAME, find_saved_lists, load_content, load_papers, save_papers, save_search,
-                     set_follow, update_papers, work_key)
+from storage import (LIBRARY_FOLDER, PAPERS_FILENAME, find_saved_lists, load_content, load_papers, save_papers,
+                     save_search, set_follow, update_papers, work_key)
 
-LIBRARY_FOLDER = Path("library")
 TITLE_SEARCH_FOLDER = LIBRARY_FOLDER / "Búsquedas por título"
 BIBLIOGRAPHY_FOLDER = LIBRARY_FOLDER / "Bibliografías"
 MAX_BOOKS_PER_SOURCE = 50
