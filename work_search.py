@@ -21,9 +21,10 @@ from downloader import add_metadata, download_paper, downloaded_file, is_downloa
 from duplicates import combine, merge_duplicates, shared_surname, title_words
 from languages import keep_chosen_languages, paper_language_allowed, using_languages
 from models import MAX_TITLE_LENGTH_SHOWN, Author, Paper
+from pdf_finders.base import PdfFinder
 from pdf_finders.core import CoreFinder
 from pdf_finders.semantic_scholar import SemanticScholarFinder
-from pdf_finders.selenium_fast import SeleniumSciHubFinder
+from pdf_finders.sci_hub import SeleniumSciHubFinder
 from pdf_finders.unpaywall import UnpaywallFinder
 from reviews import ask_doubtful, doubtful, needs_review, set_pending
 from sources.base import BookSource
@@ -97,51 +98,63 @@ def find_and_download_pdfs(papers: list[Paper], folder: Path) -> None:
 
 def find_and_download(papers: list[Paper], folder: Path, with_links: list[Paper]) -> None:
     if with_links:
-        print(f"Descargando {len(with_links)} obras con enlace ya conocido...")
-        task_progress.step(f"Descargando {len(with_links)} obras con enlace ya conocido")
-        started = time.monotonic()
-        for paper in with_links:
-            try_download(paper, folder, paper.pdf_urls)
-        print(f"Enlaces ya conocidos: {len(with_links)} obras en {time.monotonic() - started:.0f} s")
-
+        download_known_links(with_links, folder)
     for finder in PDF_FINDERS:
         pending = [paper for paper in papers if not is_downloaded(paper, folder)]
         if not pending:
             break
         if type(finder).__name__ in UNREACHABLE_SOURCES:
             continue
+        pending = not_missed_recently(type(finder).__name__, pending)
+        if pending:
+            download_finder_links(finder, pending, folder)
 
-        finder_name = type(finder).__name__
-        retry_days = FINDER_RETRY_DAYS.get(finder_name)
-        if retry_days:
-            waiting = [paper for paper in pending if missed_recently(paper, finder_name, retry_days)]
-            if waiting:
-                print(f"{finder_name}: {len(waiting)} obras esperan (ya las buscó hace menos de {retry_days} días)")
-                pending = [paper for paper in pending if paper not in waiting]
-            if not pending:
-                continue
 
-        task_progress.finder_step(finder)
-        started = time.monotonic()
-        try:
-            found_urls = finder.find_pdf_urls(pending)
-        except Exception as error:
-            # A service that is down or refusing us (CORE timeouts, Semantic Scholar's limits)
-            # would make every following search wait again, so it is skipped until the restart.
-            UNREACHABLE_SOURCES.add(finder_name)
-            print(f"Aviso: {finder_name} ha fallado y se salta en el resto de búsquedas: {error}")
-            continue
-        print(f"{finder_name}: {len(pending)} obras en {time.monotonic() - started:.0f} s")
+def download_known_links(with_links: list[Paper], folder: Path) -> None:
+    print(f"Descargando {len(with_links)} obras con enlace ya conocido...")
+    task_progress.step(f"Descargando {len(with_links)} obras con enlace ya conocido")
+    started = time.monotonic()
+    for paper in with_links:
+        try_download(paper, folder, paper.pdf_urls)
+    print(f"Enlaces ya conocidos: {len(with_links)} obras en {time.monotonic() - started:.0f} s")
 
-        today = dt.date.today().isoformat()
-        for position, paper in enumerate(pending):
-            new_urls = [url for url in found_urls.get(position, []) if url not in paper.pdf_urls]
-            if new_urls:
-                paper.pdf_urls.extend(new_urls)
-                try_download(paper, folder, new_urls)
-            # Giving only links that were already known doesn't count as finding it.
-            if retry_days and not is_downloaded(paper, folder):
-                paper.finder_misses[finder_name] = today
+
+def not_missed_recently(finder_name: str, pending: list[Paper]) -> list[Paper]:
+    """The works the finder hasn't looked for in vain lately (only the slow ones wait: FINDER_RETRY_DAYS)."""
+    retry_days = FINDER_RETRY_DAYS.get(finder_name)
+    if not retry_days:
+        return pending
+    ready = [paper for paper in pending if not missed_recently(paper, finder_name, retry_days)]
+    if len(ready) < len(pending):
+        print(f"{finder_name}: {len(pending) - len(ready)} obras esperan "
+              f"(ya las buscó hace menos de {retry_days} días)")
+    return ready
+
+
+def download_finder_links(finder: PdfFinder, pending: list[Paper], folder: Path) -> None:
+    """Ask the finder for links to the works' files, and download the new ones."""
+    finder_name = type(finder).__name__
+    task_progress.finder_step(finder)
+    started = time.monotonic()
+    try:
+        found_urls = finder.find_pdf_urls(pending)
+    except Exception as error:
+        # A service that is down or refusing us (CORE timeouts, Semantic Scholar's limits)
+        # would make every following search wait again, so it is skipped until the restart.
+        UNREACHABLE_SOURCES.add(finder_name)
+        print(f"Aviso: {finder_name} ha fallado y se salta en el resto de búsquedas: {error}")
+        return
+    print(f"{finder_name}: {len(pending)} obras en {time.monotonic() - started:.0f} s")
+
+    today = dt.date.today().isoformat()
+    for position, paper in enumerate(pending):
+        new_urls = [url for url in found_urls.get(position, []) if url not in paper.pdf_urls]
+        if new_urls:
+            paper.pdf_urls.extend(new_urls)
+            try_download(paper, folder, new_urls)
+        # Giving only links that were already known doesn't count as finding it.
+        if finder_name in FINDER_RETRY_DAYS and not is_downloaded(paper, folder):
+            paper.finder_misses[finder_name] = today
 
 
 def missed_recently(paper: Paper, finder_name: str, days: int) -> bool:
@@ -183,11 +196,7 @@ def search_folder(base_folder: Path, words: str) -> Path:
 def quit_finder_drivers() -> None:
     browser_session.quit_browser()
     for finder in PDF_FINDERS:
-        if hasattr(finder, 'driver') and finder.driver:
-            try:
-                finder.driver.quit()
-            except:
-                pass
+        finder.close()
 
 
 def find_books(search: Callable[[BookSource], list[Paper]]) -> list[Paper]:
@@ -294,18 +303,7 @@ def download_author_works(source: OpenAlexSource, selected_authors: list[Author]
     # Everything that isn't in Calibre yet is downloaded (but what the user rejected), the doubtful
     # works only if the user ticks them; the list keeps every work found.
     candidates = [paper for paper in papers if not paper.in_calibre and paper.review != "rejected"]
-    waiting = [paper for paper in candidates if doubtful(paper) and paper.review != "accepted"]
-    if waiting:
-        print(f"\n{len(waiting)} obras solo están en Internet Archive o Google Books.")
-        chosen = ask_doubtful(waiting, main_author.name) if ask_doubtful_works else None
-        if chosen is None:
-            print("Se quedan en \"Revisar obras dudosas\" hasta que digas cuáles son suyas.")
-        for paper in waiting:
-            if chosen is None:
-                # Ctrl+C: they are asked again in "Revisar obras dudosas" (or by Telegram, if followed).
-                set_pending(paper)
-            else:
-                paper.review = "accepted" if any(paper is one for one in chosen) else "rejected"
+    decide_doubtful_works(candidates, main_author.name, ask_doubtful_works)
     to_download = [paper for paper in candidates if not doubtful(paper) or paper.review == "accepted"]
     for paper in to_download:
         paper.wanted = True
@@ -322,6 +320,23 @@ def download_author_works(source: OpenAlexSource, selected_authors: list[Author]
             paper.downloaded = is_downloaded(paper, folder)
         papers_file = save_papers(main_author, papers, folder, selected_authors, language_choice)
         print(f"✓ Lista guardada en {papers_file}\n")
+
+
+def decide_doubtful_works(candidates: list[Paper], author_name: str, ask_now: bool) -> None:
+    """Ask which doubtful works are the author's. Without `ask_now`, or with Ctrl+C, they wait in
+    "Revisar obras dudosas" (and are asked by Telegram, if the author is followed)."""
+    waiting = [paper for paper in candidates if doubtful(paper) and paper.review != "accepted"]
+    if not waiting:
+        return
+    print(f"\n{len(waiting)} obras solo están en Internet Archive o Google Books.")
+    chosen = ask_doubtful(waiting, author_name) if ask_now else None
+    if chosen is None:
+        print("Se quedan en \"Revisar obras dudosas\" hasta que digas cuáles son suyas.")
+        for paper in waiting:
+            set_pending(paper)
+        return
+    for paper in waiting:
+        paper.review = "accepted" if any(paper is one for one in chosen) else "rejected"
 
 
 def find_author_works(source: OpenAlexSource, profiles: list[Author]) -> list[Paper]:
@@ -431,18 +446,22 @@ def add_catalogue_copies(papers: list[Paper]) -> int:
         if not paper.title:
             continue
         links_before = len(paper.pdf_urls)
-        # The subtitle is often written differently (or missing) in each catalogue.
-        main_title = paper.title.split(":")[0]
-        for catalogue in catalogues:
+        for catalogue in list(catalogues):
             try:
-                candidates = catalogue.search_books_by_title(main_title, MAX_CATALOGUE_CANDIDATES)
-            except Exception:
-                continue
-            for candidate in candidates:
-                if same_main_work(paper, candidate):
-                    combine(paper, candidate)
+                add_copies_from(catalogue, paper)
+            except Exception as error:
+                print(f"Aviso: no se ha podido buscar en el catálogo local de {catalogue.name}: {error}")
+                catalogues.remove(catalogue)
         improved += len(paper.pdf_urls) > links_before
     return improved
+
+
+def add_copies_from(catalogue: BookSource, paper: Paper) -> None:
+    # The subtitle is often written differently (or missing) in each catalogue.
+    main_title = paper.title.split(":")[0]
+    for candidate in catalogue.search_books_by_title(main_title, MAX_CATALOGUE_CANDIDATES):
+        if same_main_work(paper, candidate):
+            combine(paper, candidate)
 
 
 def add_openalex_links(papers: list[Paper]) -> int:

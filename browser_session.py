@@ -145,6 +145,11 @@ def _folder_size() -> int:
     return size
 
 
+def in_container() -> bool:
+    """Inside a container (the tower) Chrome can't use its own sandbox, and needs --no-sandbox."""
+    return bool(os.environ.get("CHROME_IN_CONTAINER"))
+
+
 def quit_browser() -> None:
     global _driver
     if _driver:
@@ -228,8 +233,7 @@ def _get_driver():
             # Save PDFs instead of showing them.
             "plugins.always_open_pdf_externally": True,
         })
-        # Inside a container (the tower) Chrome can't use its own sandbox.
-        if os.environ.get("CHROME_IN_CONTAINER"):
+        if in_container():
             options.add_argument("--no-sandbox")
         _driver = webdriver.Chrome(options=options)
         _driver.set_page_load_timeout(DOWNLOAD_TIMEOUT_SECONDS)

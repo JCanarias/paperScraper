@@ -32,24 +32,26 @@ class CoreFinder(PdfFinder):
             return {}
 
         print(f"[CORE] Buscando {len(positions)} títulos...")
-        pdf_urls = {}
+        pdf_urls: dict[int, list[str]] = {}
         titles = list(positions)
         for start in range(0, len(titles), TITLES_PER_REQUEST):
-            for result in self._search(titles[start:start + TITLES_PER_REQUEST]):
-                for position in positions.get(normalize(result["title"] or ""), []):
-                    if self._is_same_paper(papers[position], result):
-                        urls = pdf_urls.setdefault(position, [])
-                        if result["downloadUrl"] not in urls:
-                            urls.append(result["downloadUrl"])
+            for core_work in self._search(titles[start:start + TITLES_PER_REQUEST]):
+                for position in self._same_papers(core_work, positions, papers):
+                    add_url(pdf_urls.setdefault(position, []), core_work["downloadUrl"])
         print(f"[CORE] ✓ {len(pdf_urls)}/{len(papers)} con PDF")
         return pdf_urls
 
-    def _is_same_paper(self, paper: Paper, result: dict) -> bool:
-        if not result.get("downloadUrl"):
+    def _same_papers(self, core_work: dict, positions: dict[str, list[int]], papers: list[Paper]) -> list[int]:
+        """The positions of the papers that are this work of CORE."""
+        return [position for position in positions.get(normalize(core_work["title"] or ""), [])
+                if self._is_same_paper(papers[position], core_work)]
+
+    def _is_same_paper(self, paper: Paper, core_work: dict) -> bool:
+        if not core_work.get("downloadUrl"):
             return False
         # Two works with the same title: if both have a DOI, it must be the same one.
-        if paper.doi and result.get("doi"):
-            return paper.doi.lower() == result["doi"].lower()
+        if paper.doi and core_work.get("doi"):
+            return paper.doi.lower() == core_work["doi"].lower()
         return True
 
     def _search(self, titles: list[str]) -> list[dict]:
@@ -71,6 +73,11 @@ class CoreFinder(PdfFinder):
             return response.json()["results"]
 
         raise RuntimeError("CORE sigue rechazando las peticiones, inténtalo más tarde.")
+
+
+def add_url(urls: list[str], url: str) -> None:
+    if url not in urls:
+        urls.append(url)
 
 
 def normalize(title: str) -> str:

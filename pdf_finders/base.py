@@ -10,6 +10,9 @@ class PdfFinder(ABC):
     def find_pdf_urls(self, papers: list[Paper]) -> dict[int, list[str]]:
         """Return the PDF links found for each paper, as {position of the paper in the list: [pdf_url, ...]}."""
 
+    def close(self) -> None:
+        """Let go of what the finder keeps open between searches (Sci-Hub's browser); most keep nothing."""
+
 
 class DoiPdfFinder(PdfFinder):
     """For services that can only search by DOI: papers without one are skipped."""

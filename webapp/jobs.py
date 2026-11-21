@@ -11,6 +11,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 import calibre_sync
+from models import Paper
 from storage import LIBRARY_FOLDER
 
 WEB_FOLDER = LIBRARY_FOLDER / ".web"
@@ -141,10 +142,8 @@ def reviews(arguments: dict) -> None:
 
     `decisions` is {list path: {work key: true/false}}; the works without a decision stay pending.
     """
-    import work_search
-    from downloader import is_downloaded
-    from reviews import apply_decisions, decide, needs_review
-    from storage import load_papers, update_papers, work_key
+    from reviews import apply_decisions, download_chosen
+    from storage import load_papers, update_papers
 
     # The answers given in Telegram meanwhile go first, as in the menu.
     apply_decisions(LIBRARY_FOLDER)
@@ -153,26 +152,29 @@ def reviews(arguments: dict) -> None:
         papers_file = LIBRARY_FOLDER / list_path
         if not papers_file.is_file() or not papers_file.resolve().is_relative_to(LIBRARY_FOLDER.resolve()):
             continue
-        folder = papers_file.parent
         papers = load_papers(papers_file)
-        accepted = []
-        for paper in papers:
-            key = work_key(paper)
-            if key in chosen and needs_review(paper, folder):
-                decide(paper, bool(chosen[key]))
-                if chosen[key]:
-                    accepted.append(paper)
+        accepted = decide_reviews(papers, chosen, papers_file.parent)
         update_papers(papers_file, papers)
         rejected = sum(not value for value in chosen.values())
-        print(f"\n{folder.name}: {len(accepted)} aceptadas, {rejected} descartadas")
+        print(f"\n{papers_file.parent.name}: {len(accepted)} aceptadas, {rejected} descartadas")
         if accepted:
-            work_search.find_and_download_pdfs(accepted, folder)
-            work_search.print_download_summary(accepted, folder)
-            work_search.after_download(accepted, folder)
-            for paper in papers:
-                paper.downloaded = is_downloaded(paper, folder)
-            update_papers(papers_file, papers)
+            download_chosen(accepted, papers_file, papers)
     print("\n✓ Decisiones guardadas.")
+
+
+def decide_reviews(papers: list[Paper], chosen: dict[str, bool], folder: Path) -> list[Paper]:
+    """Write the panel's decisions ({work key: accepted}) into the works; return the accepted ones."""
+    from reviews import decide, needs_review
+    from storage import work_key
+
+    accepted = []
+    for paper in papers:
+        key = work_key(paper)
+        if key in chosen and needs_review(paper, folder):
+            decide(paper, bool(chosen[key]))
+            if chosen[key]:
+                accepted.append(paper)
+    return accepted
 
 
 def daily(_: dict) -> None:

@@ -25,6 +25,7 @@ from languages import (LANGUAGE_NAMES, current_choice, languages_label, load_set
                        save_settings, using_languages)
 from library_browser import folder_files, folders_with_files, human_size, papers_by_file, remove_files
 from manual_download import work_page
+from models import Paper
 from reviews import needs_review
 import daily_reports
 import task_progress
@@ -293,25 +294,10 @@ class Panel:
     # --- the home page: latest downloads and what is waiting ---
 
     async def home(self, request: web.Request) -> web.Response:
-        lists = load_lists()
-        counts = {"pending": 0, "reviews": 0, "followed": 0, "not_uploaded": 0}
-        for papers_file, content, papers in lists:
-            folder = papers_file.parent
-            counts["followed"] += bool(content.get("follow"))
-            with using_languages(content.get("language_choice")):
-                for paper in papers:
-                    if paper.in_calibre:
-                        continue
-                    downloaded = is_downloaded(paper, folder)
-                    counts["not_uploaded"] += downloaded
-                    if needs_review(paper, folder):
-                        counts["reviews"] += 1
-                    elif paper.wanted and not downloaded and paper_language_allowed(paper):
-                        counts["pending"] += 1
         return json_response({
             "downloads": download_history.latest(LATEST_DOWNLOADS),
             "daily_report": next(iter(daily_reports.latest(1)), None),
-            "counts": counts,
+            "counts": library_counts(),
             "languages": languages_label(),
         })
 
@@ -471,6 +457,28 @@ class Panel:
                                "updated": (index.get_state("last_complete") or "")[:10] or None})
             index.database.close()
         return json_response({"catalogues": catalogues})
+
+
+def library_counts() -> dict[str, int]:
+    """The works still without a file, the doubtful ones, the followed authors and the files not in Calibre."""
+    counts = {"pending": 0, "reviews": 0, "followed": 0, "not_uploaded": 0}
+    for papers_file, content, papers in load_lists():
+        counts["followed"] += bool(content.get("follow"))
+        with using_languages(content.get("language_choice")):
+            add_list_counts(counts, papers, papers_file.parent)
+    return counts
+
+
+def add_list_counts(counts: dict[str, int], papers: list[Paper], folder: Path) -> None:
+    for paper in papers:
+        if paper.in_calibre:
+            continue
+        downloaded = is_downloaded(paper, folder)
+        counts["not_uploaded"] += downloaded
+        if needs_review(paper, folder):
+            counts["reviews"] += 1
+        elif paper.wanted and not downloaded and paper_language_allowed(paper):
+            counts["pending"] += 1
 
 
 def load_lists() -> list[tuple[Path, dict, list]]:

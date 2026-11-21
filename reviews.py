@@ -15,6 +15,7 @@ The user decides:
 
 A rejected work is never downloaded again, also after a new search of the author.
 """
+import datetime as dt
 import json
 import secrets
 import sys
@@ -135,31 +136,34 @@ def apply_decisions(library: Path = LIBRARY_FOLDER) -> dict[Path, set[str]]:
 
     Returns the review ids of the accepted works, by list.
     """
-    decisions = {}
-    for decision_file in DECISIONS_FOLDER.glob("*.json") if DECISIONS_FOLDER.exists() else []:
-        try:
-            decisions[decision_file.stem] = (json.loads(decision_file.read_text(encoding="utf-8"))["accepted"],
-                                             decision_file)
-        except (OSError, ValueError, KeyError):
-            continue
+    decisions = read_decisions()
     accepted: dict[Path, set[str]] = {}
     if not decisions:
         return accepted
     for papers_file in find_saved_lists(library):
         papers = load_papers(papers_file)
-        changed = False
-        for paper in papers:
-            if paper.review_id in decisions:
-                is_accepted, _ = decisions[paper.review_id]
-                decide(paper, is_accepted)
-                changed = True
-                if is_accepted:
-                    accepted.setdefault(papers_file, set()).add(paper.review_id)
-        if changed:
+        decided = [paper for paper in papers if paper.review_id in decisions]
+        for paper in decided:
+            decide(paper, decisions[paper.review_id])
+            if decisions[paper.review_id]:
+                accepted.setdefault(papers_file, set()).add(paper.review_id)
+        if decided:
             update_papers(papers_file, papers)
-    for _, decision_file in decisions.values():
-        decision_file.unlink(missing_ok=True)
+    for review_id in decisions:
+        (DECISIONS_FOLDER / f"{review_id}.json").unlink(missing_ok=True)
     return accepted
+
+
+def read_decisions() -> dict[str, bool]:
+    """The decisions waiting in DECISIONS_FOLDER: whether each review id was accepted."""
+    decisions = {}
+    for decision_file in DECISIONS_FOLDER.glob("*.json") if DECISIONS_FOLDER.exists() else []:
+        try:
+            decisions[decision_file.stem] = json.loads(decision_file.read_text(encoding="utf-8"))["accepted"]
+        except (OSError, ValueError, KeyError) as error:
+            # Left there: it may still be being written, and is read next time.
+            print(f"Aviso: no se ha podido leer la decisión {decision_file.name}: {error}")
+    return decisions
 
 
 def download_accepted(accepted: dict[Path, set[str]]) -> None:
@@ -167,10 +171,7 @@ def download_accepted(accepted: dict[Path, set[str]]) -> None:
 
     calibre_sync.connect() and the daily check's on_download must be set up by the caller.
     """
-    import datetime as dt
-
     import work_search
-    from telegram_notify import send_message
 
     for papers_file, review_ids in accepted.items():
         folder = papers_file.parent
@@ -186,16 +187,23 @@ def download_accepted(accepted: dict[Path, set[str]]) -> None:
         try:
             work_search.find_and_download_pdfs(chosen, folder)
         finally:
-            for paper in chosen:
-                if not is_downloaded(paper, folder) and not paper.in_calibre:
-                    # From here on it is retried like any other pending work.
-                    paper.failed_checks += 1
-                    paper.last_check = dt.date.today().isoformat()
-                    send_message(f"😕 No he encontrado archivo de «{paper.title}»; "
-                                 "se volverá a buscar en las próximas revisiones diarias.")
+            leave_for_the_daily_check(chosen, folder)
             for paper in papers:
                 paper.downloaded = is_downloaded(paper, folder)
             update_papers(papers_file, papers)
+
+
+def leave_for_the_daily_check(chosen: list[Paper], folder: Path) -> None:
+    """The accepted works still without a file are retried from now on like any other pending work;
+    the user is told."""
+    from telegram_notify import send_message
+
+    for paper in chosen:
+        if not is_downloaded(paper, folder) and not paper.in_calibre:
+            paper.failed_checks += 1
+            paper.last_check = dt.date.today().isoformat()
+            send_message(f"😕 No he encontrado archivo de «{paper.title}»; "
+                         "se volverá a buscar en las próximas revisiones diarias.")
 
 
 def download_now() -> None:
@@ -226,20 +234,13 @@ def download_now() -> None:
 
 def review_in_menu(library: Path = LIBRARY_FOLDER) -> None:
     """Menu "Revisar obras dudosas": tick the ones to download; the others are rejected."""
-    import work_search
     from run_lock import daily_check_running
 
     if daily_check_running():
         print("La revisión diaria está en marcha; prueba cuando termine.")
         return
     apply_decisions(library)
-    lists = []
-    for papers_file in find_saved_lists(library):
-        papers = load_papers(papers_file)
-        calibre_sync.mark_papers(papers)
-        waiting = [paper for paper in papers if needs_review(paper, papers_file.parent)]
-        if waiting:
-            lists.append((papers_file, papers, waiting))
+    lists = lists_with_doubtful_works(library)
     if not lists:
         print("No hay obras dudosas por revisar.")
         return
@@ -255,16 +256,35 @@ def review_in_menu(library: Path = LIBRARY_FOLDER) -> None:
             decide(paper, any(paper is one for one in chosen))
         update_papers(papers_file, papers)
         if chosen:
-            try:
-                work_search.find_and_download_pdfs(chosen, folder)
-            except KeyboardInterrupt:
-                print("\n\n⏹ Búsqueda interrumpida por el usuario")
-                work_search.quit_finder_drivers()
-            work_search.print_download_summary(chosen, folder)
-            work_search.after_download(chosen, folder)
-            for paper in papers:
-                paper.downloaded = is_downloaded(paper, folder)
-            update_papers(papers_file, papers)
+            download_chosen(chosen, papers_file, papers)
+
+
+def lists_with_doubtful_works(library: Path) -> list[tuple[Path, list[Paper], list[Paper]]]:
+    """Each list with doubtful works to decide on: its file, its works and the doubtful ones."""
+    lists = []
+    for papers_file in find_saved_lists(library):
+        papers = load_papers(papers_file)
+        calibre_sync.mark_papers(papers)
+        waiting = [paper for paper in papers if needs_review(paper, papers_file.parent)]
+        if waiting:
+            lists.append((papers_file, papers, waiting))
+    return lists
+
+
+def download_chosen(chosen: list[Paper], papers_file: Path, papers: list[Paper]) -> None:
+    import work_search
+
+    folder = papers_file.parent
+    try:
+        work_search.find_and_download_pdfs(chosen, folder)
+    except KeyboardInterrupt:
+        print("\n\n⏹ Búsqueda interrumpida por el usuario")
+        work_search.quit_finder_drivers()
+    work_search.print_download_summary(chosen, folder)
+    work_search.after_download(chosen, folder)
+    for paper in papers:
+        paper.downloaded = is_downloaded(paper, folder)
+    update_papers(papers_file, papers)
 
 
 def ask_doubtful(waiting: list[Paper], author_name: str) -> list[Paper] | None:

@@ -42,33 +42,20 @@ def harvest(index: LocalIndex, base_url: str, parse: Callable[[ET.Element], dict
     pages = 0
 
     while True:
-        if token:
-            params = {"verb": "ListRecords", "resumptionToken": token}
-        else:
-            params = {"verb": "ListRecords", "metadataPrefix": "oai_dc"}
-            if set_name:
-                params["set"] = set_name
-            last_complete = index.get_state("last_complete")
-            if last_complete:
-                params["from"] = last_complete
-
-        root = request_page(base_url, params)
-        error = root.find("oai:error", NAMESPACES)
-        if error is not None:
-            if error.get("code") == "noRecordsMatch":
-                break
-            if error.get("code") == "badResumptionToken":
-                # Tokens expire (Dialnet's after an hour); start again from the last complete harvest.
-                print("  (el enlace a la página siguiente ha caducado; se sigue desde el principio)")
-                token = None
-                index.set_state("resumption_token", None)
-                continue
-            raise RuntimeError(f"{error.get('code')}: {error.text}")
+        root = request_page(base_url, list_records_parameters(index, token, set_name))
+        error_code = answer_error(root)
+        if error_code == "noRecordsMatch":
+            break
+        if error_code == "badResumptionToken":
+            # Tokens expire (Dialnet's after an hour); start again from the last complete harvest.
+            print("  (el enlace a la página siguiente ha caducado; se sigue desde el principio)")
+            token = None
+            index.set_state("resumption_token", None)
+            continue
 
         save_page(index, root, parse)
         pages += 1
-        token_element = root.find(".//oai:resumptionToken", NAMESPACES)
-        token = (token_element.text or "").strip() if token_element is not None else ""
+        token = resumption_token(root)
         index.set_state("resumption_token", token or None)
         if pages % 10 == 0:
             print(f"  {pages} páginas, {index.count()} registros en el índice")
@@ -81,6 +68,35 @@ def harvest(index: LocalIndex, base_url: str, parse: Callable[[ET.Element], dict
     index.set_state("last_complete", harvest_date)
     index.set_state("harvest_date", None)
     return True
+
+
+def list_records_parameters(index: LocalIndex, token: str | None, set_name: str | None) -> dict:
+    """The next page of a harvest, or the first one: the records changed since the last complete harvest."""
+    if token:
+        return {"verb": "ListRecords", "resumptionToken": token}
+    parameters = {"verb": "ListRecords", "metadataPrefix": "oai_dc"}
+    if set_name:
+        parameters["set"] = set_name
+    last_complete = index.get_state("last_complete")
+    if last_complete:
+        parameters["from"] = last_complete
+    return parameters
+
+
+def resumption_token(root: ET.Element) -> str:
+    """What to ask for the next page, or "" on the last one."""
+    token_element = root.find(".//oai:resumptionToken", NAMESPACES)
+    return (token_element.text or "").strip() if token_element is not None else ""
+
+
+def answer_error(root: ET.Element) -> str | None:
+    """The code of the error the answer gives when it is one the harvest expects; other errors stop it."""
+    error = root.find("oai:error", NAMESPACES)
+    if error is None:
+        return None
+    if error.get("code") in ("noRecordsMatch", "badResumptionToken"):
+        return error.get("code")
+    raise RuntimeError(f"{error.get('code')}: {error.text}")
 
 
 def request_page(base_url: str, params: dict) -> ET.Element:
