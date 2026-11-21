@@ -169,7 +169,7 @@ def download_accepted(accepted: dict[Path, set[str]]) -> None:
     """
     import datetime as dt
 
-    import main
+    import work_search
     from telegram_notify import send_message
 
     for papers_file, review_ids in accepted.items():
@@ -184,7 +184,7 @@ def download_accepted(accepted: dict[Path, set[str]]) -> None:
             continue
         print(f"\n{folder.name}: {len(chosen)} obras aceptadas en Telegram")
         try:
-            main.find_and_download_pdfs(chosen, folder)
+            work_search.find_and_download_pdfs(chosen, folder)
         finally:
             for paper in chosen:
                 if not is_downloaded(paper, folder) and not paper.in_calibre:
@@ -202,7 +202,7 @@ def download_now() -> None:
     """`python reviews.py download`: apply the Telegram decisions and download the accepted works,
     unless the daily check is running (it does the same at its end)."""
     import daily_check
-    import main
+    import work_search
     from run_lock import take_daily_lock
 
     lock = take_daily_lock()
@@ -213,12 +213,12 @@ def download_now() -> None:
         # Answers given while it downloads (several buttons in a row) find the lock taken:
         # this run takes them too.
         while accepted := apply_decisions():
-            if daily_check.on_download not in main.DOWNLOAD_LISTENERS:
+            if daily_check.on_download not in work_search.DOWNLOAD_LISTENERS:
                 calibre_sync.connect()
-                main.DOWNLOAD_LISTENERS.append(daily_check.on_download)
+                work_search.DOWNLOAD_LISTENERS.append(daily_check.on_download)
             download_accepted(accepted)
     finally:
-        main.quit_finder_drivers()
+        work_search.quit_finder_drivers()
         lock.close()
 
 
@@ -226,7 +226,7 @@ def download_now() -> None:
 
 def review_in_menu(library: Path = LIBRARY_FOLDER) -> None:
     """Menu "Revisar obras dudosas": tick the ones to download; the others are rejected."""
-    import main
+    import work_search
     from run_lock import daily_check_running
 
     if daily_check_running():
@@ -256,12 +256,12 @@ def review_in_menu(library: Path = LIBRARY_FOLDER) -> None:
         update_papers(papers_file, papers)
         if chosen:
             try:
-                main.find_and_download_pdfs(chosen, folder)
+                work_search.find_and_download_pdfs(chosen, folder)
             except KeyboardInterrupt:
                 print("\n\n⏹ Búsqueda interrumpida por el usuario")
-                main.quit_finder_drivers()
-            main.print_download_summary(chosen, folder)
-            main.after_download(chosen, folder)
+                work_search.quit_finder_drivers()
+            work_search.print_download_summary(chosen, folder)
+            work_search.after_download(chosen, folder)
             for paper in papers:
                 paper.downloaded = is_downloaded(paper, folder)
             update_papers(papers_file, papers)

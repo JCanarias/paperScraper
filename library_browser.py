@@ -180,7 +180,7 @@ def remove_files(chosen: list[Path], library: Path, papers_file: Path | None, pa
         if paper:
             paper.downloaded = False
             if forget:
-                # "rejected" also survives a new search of the author (main.keep_earlier_wanted).
+                # "rejected" also survives a new search of the author (work_search.keep_earlier_wanted).
                 paper.wanted = False
                 paper.review = "rejected"
     if papers_file and any(path in paper_of for path in chosen):

@@ -25,13 +25,13 @@ from pathlib import Path
 
 import calibre_sync
 import daily_reports
-import main
+import work_search
 from downloader import is_downloaded, tag_repeated_filenames
 from duplicates import merge_duplicates, same_work
 from languages import keep_chosen_languages, languages_label, paper_language_allowed, using_languages
 import sources.openalex
 import task_progress
-from models import Paper
+from models import Paper, short_authors
 from reviews import apply_decisions, ask_by_telegram, doubtful, download_accepted, needs_review, set_pending
 from run_lock import take_daily_lock
 from sources.openalex import OpenAlexSource
@@ -140,7 +140,7 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
     # A work that gets new links today (a new copy found) is tried today, whatever it failed before.
     links_before = {id(paper): len(paper.pdf_urls) for paper in papers}
     try:
-        found = keep_chosen_languages(merge_duplicates(main.find_author_works(source, author_profiles(content))))
+        found = keep_chosen_languages(merge_duplicates(work_search.find_author_works(source, author_profiles(content))))
     except Exception as error:
         # Without the new search, the pending works of the list are still looked for.
         print(f"Aviso: no se han podido buscar obras nuevas: {error}")
@@ -173,7 +173,7 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
                and paper_language_allowed(paper)]
     try:
         if pending:
-            found_in_catalogues = main.add_catalogue_copies(pending)
+            found_in_catalogues = work_search.add_catalogue_copies(pending)
             if found_in_catalogues:
                 print(f"Encontradas en los catálogos locales: {found_in_catalogues}")
         due = [paper for paper in pending
@@ -188,7 +188,7 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
                 paper.failed_checks += 1
                 paper.last_check = today.isoformat()
             update_papers(papers_file, papers)
-            main.find_and_download_pdfs(due, folder)
+            work_search.find_and_download_pdfs(due, folder)
             for paper in due:
                 # A file sent to Calibre is no longer in the folder.
                 if is_downloaded(paper, folder) or paper.sent_to_calibre:
@@ -267,7 +267,7 @@ def on_download(paper: Paper, folder: Path) -> None:
     lines = [
         "📥 Nueva obra descargada",
         f"{paper.title} ({paper.year or 's. f.'})",
-        main.short_authors(paper),
+        short_authors(paper),
         paper.journal or paper.publisher or paper.source or "",
         calibre_state,
         f"Carpeta: {folder.name}",
@@ -349,7 +349,7 @@ def main_check() -> None:
                 calibre_sync.upload_downloaded()
             except Exception as error:
                 print(f"Aviso: no se han podido subir a Calibre los archivos pendientes: {error}")
-        main.DOWNLOAD_LISTENERS.append(on_download)
+        work_search.DOWNLOAD_LISTENERS.append(on_download)
         sources.openalex.budget_to_keep_usd = OPENALEX_BUDGET_LEFT_FOR_MENU_USD
         # The answers given in Telegram since the last check.
         accepted = apply_decisions()
@@ -382,7 +382,7 @@ def main_check() -> None:
         daily_reports.save(report_data("failed", str(error)))
         sys.exit(1)
     finally:
-        main.quit_finder_drivers()
+        work_search.quit_finder_drivers()
         lock.close()
 
 

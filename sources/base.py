@@ -24,7 +24,7 @@ class BookSource(ABC):
 
     name: str
     # It goes through the shared Chrome (browser_session.py): the ones that do are searched one after
-    # another, while the rest are searched at the same time (main.find_books).
+    # another, while the rest are searched at the same time (work_search.find_books).
     uses_browser: bool = False
 
     @abstractmethod

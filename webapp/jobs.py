@@ -47,7 +47,7 @@ def label(task: str, arguments: dict) -> str:
 
 
 def author(arguments: dict) -> None:
-    import main
+    import work_search
     from languages import using_languages
     from models import Author
     from sources.openalex import OpenAlexSource
@@ -62,19 +62,19 @@ def author(arguments: dict) -> None:
     # As in the menu: several OpenAlex profiles of one person make a single list, named after the biggest.
     main_author = max(profiles, key=lambda profile: profile.works_count)
     with using_languages(language_choice):
-        main.download_author_works(OpenAlexSource(), profiles, main_author, main.author_folder(main_author),
+        work_search.download_author_works(OpenAlexSource(), profiles, main_author, work_search.author_folder(main_author),
                                    language_choice, ask_doubtful_works=False)
 
 
 def title_search(arguments: dict) -> None:
-    import main
+    import work_search
     from sources.openalex import OpenAlexSource
 
     words = str(arguments.get("words") or "").strip()
     if not words:
         sys.exit("No has escrito ninguna palabra.")
     calibre_sync.connect()
-    found = main.find_by_title(OpenAlexSource(), words)
+    found = work_search.find_by_title(OpenAlexSource(), words)
     WEB_FOLDER.mkdir(parents=True, exist_ok=True)
     TITLE_RESULTS.write_text(json.dumps({"words": words, "papers": [asdict(paper) for paper in found]},
                                         ensure_ascii=False), encoding="utf-8")
@@ -83,7 +83,7 @@ def title_search(arguments: dict) -> None:
 
 
 def title_download(arguments: dict) -> None:
-    import main
+    import work_search
     from models import Paper
 
     results = json.loads(TITLE_RESULTS.read_text(encoding="utf-8"))
@@ -95,26 +95,26 @@ def title_download(arguments: dict) -> None:
         sys.exit("No has elegido ninguna obra.")
     calibre_sync.connect()
     words = results["words"]
-    main.download_and_save_search(words, [papers[number] for number in chosen],
-                                  main.search_folder(main.TITLE_SEARCH_FOLDER, words))
+    work_search.download_and_save_search(words, [papers[number] for number in chosen],
+                                  work_search.search_folder(work_search.TITLE_SEARCH_FOLDER, words))
 
 
 def bibliography(arguments: dict) -> None:
-    import main
+    import work_search
     from sources.openalex import OpenAlexSource
 
     file_path = (BIBLIOGRAPHY_FOLDER / str(arguments.get("file") or "")).resolve()
     if not file_path.is_file() or file_path.parent != BIBLIOGRAPHY_FOLDER.resolve():
         sys.exit("No encuentro el archivo de la bibliografía.")
     calibre_sync.connect()
-    main.download_bibliography(OpenAlexSource(), file_path)
+    work_search.download_bibliography(OpenAlexSource(), file_path)
 
 
 def retry(_: dict) -> None:
-    import main
+    import work_search
 
     calibre_sync.connect()
-    main.retry_pending()
+    work_search.retry_pending()
 
 
 def upload(_: dict) -> None:
@@ -130,10 +130,10 @@ def indexes(arguments: dict) -> None:
 
 
 def tag(_: dict) -> None:
-    import main
+    import work_search
     from sources.openalex import OpenAlexSource
 
-    main.tag_downloaded_files(OpenAlexSource())
+    work_search.tag_downloaded_files(OpenAlexSource())
 
 
 def reviews(arguments: dict) -> None:
@@ -141,7 +141,7 @@ def reviews(arguments: dict) -> None:
 
     `decisions` is {list path: {work key: true/false}}; the works without a decision stay pending.
     """
-    import main
+    import work_search
     from downloader import is_downloaded
     from reviews import apply_decisions, decide, needs_review
     from storage import load_papers, update_papers, work_key
@@ -166,9 +166,9 @@ def reviews(arguments: dict) -> None:
         rejected = sum(not value for value in chosen.values())
         print(f"\n{folder.name}: {len(accepted)} aceptadas, {rejected} descartadas")
         if accepted:
-            main.find_and_download_pdfs(accepted, folder)
-            main.print_download_summary(accepted, folder)
-            main.after_download(accepted, folder)
+            work_search.find_and_download_pdfs(accepted, folder)
+            work_search.print_download_summary(accepted, folder)
+            work_search.after_download(accepted, folder)
             for paper in papers:
                 paper.downloaded = is_downloaded(paper, folder)
             update_papers(papers_file, papers)
@@ -183,7 +183,7 @@ def daily(_: dict) -> None:
 
 
 def run(task: str, arguments: dict) -> None:
-    import main
+    import work_search
     from run_lock import take_panel_task_lock
     from sources.openalex import OpenAlexError
 
@@ -201,7 +201,7 @@ def run(task: str, arguments: dict) -> None:
         print(f"\n{error}")
         sys.exit(1)
     finally:
-        main.quit_finder_drivers()
+        work_search.quit_finder_drivers()
         lock.close()
 
 

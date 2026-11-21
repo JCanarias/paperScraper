@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
 
-# How much of a long title the console shows.
+# How much of a long title, and how many authors, the console shows.
 MAX_TITLE_LENGTH_SHOWN = 100
+MAX_AUTHORS_SHOWN = 3
 
 
 @dataclass
@@ -45,7 +46,7 @@ class Paper:
     failed_checks: int = 0
     last_check: str | None = None
     # The day each slow PDF finder last looked for it in vain ({"SeleniumSciHubFinder": "2026-11-20"}):
-    # it isn't asked again until main.FINDER_RETRY_DAYS have passed, even if the work gets new links.
+    # it isn't asked again until work_search.FINDER_RETRY_DAYS have passed, even if the work gets new links.
     finder_misses: dict[str, str] = field(default_factory=dict)
     # The other places where the same work was found (duplicates.combine): a work found only in
     # Internet Archive or Google Books is doubtful and the user is asked first (reviews.py).
@@ -68,3 +69,12 @@ class Paper:
         if self.year:
             return f"{self.year}-01-01"
         return None
+
+
+def short_authors(paper: Paper) -> str:
+    if not paper.authors:
+        return "autor desconocido"
+    names = ", ".join(paper.authors[:MAX_AUTHORS_SHOWN])
+    if len(paper.authors) > MAX_AUTHORS_SHOWN:
+        names += " et al."
+    return names

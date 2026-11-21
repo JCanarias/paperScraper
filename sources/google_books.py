@@ -34,7 +34,7 @@ class GoogleBooksSource(BookSource):
 
     def __init__(self):
         # Without a key every request shares one daily quota with everyone else in the world, which
-        # is always spent ("429 Quota exceeded"): with no key the source is not used (main.py).
+        # is always spent ("429 Quota exceeded"): with no key the source is not used (work_search.py).
         self.api_key = os.getenv("GOOGLE_BOOKS_API_KEY")
         self.available = bool(self.api_key)
 

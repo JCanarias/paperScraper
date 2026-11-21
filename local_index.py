@@ -25,7 +25,7 @@ class LocalIndex:
         self.source = source
         DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
         # Two harvests can write at the same time; each waits for the other instead of failing.
-        # The source is searched from a thread of its own (main.find_books), never from two at once.
+        # The source is searched from a thread of its own (work_search.find_books), never from two at once.
         self.database = sqlite3.connect(DATABASE_PATH, timeout=120, check_same_thread=False)
         self.database.executescript("""
             CREATE TABLE IF NOT EXISTS works (
