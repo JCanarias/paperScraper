@@ -12,11 +12,11 @@ import browser_session
 import download_history
 import task_progress
 from bibliography import find_works, read_references
-from calibre_library import CalibreLibrary, identifier_keys, title_keys
+import calibre_sync
 from downloader import add_metadata, download_paper, downloaded_file, is_downloaded, tag_repeated_filenames
 from duplicates import combine, merge_duplicates, shared_surname, title_words
 from manual_download import download_by_hand
-from models import Author, Paper
+from models import MAX_TITLE_LENGTH_SHOWN, Author, Paper
 from pdf_finders.core import CoreFinder
 from pdf_finders.semantic_scholar import SemanticScholarFinder
 from pdf_finders.selenium_fast import SeleniumSciHubFinder
@@ -52,7 +52,6 @@ MAX_TITLE_RESULTS = 1000
 MAX_AUTHORS_SHOWN = 3
 # How many works of each author are shown before choosing which author to download.
 MAX_PREVIEW_PAPERS = 15
-MAX_TITLE_LENGTH_SHOWN = 100
 # Fast APIs first; Sci-Hub opens a browser and is the slowest, so it only gets what is still missing.
 PDF_FINDERS = [
     UnpaywallFinder(),
@@ -85,8 +84,6 @@ UNREACHABLE_SOURCES: set[str] = set()
 # Catalogues kept in the local index, and how many of their works are compared with each pending one.
 INDEXED_SOURCE_TYPES = (DoabSource, DialnetSource, PhilArchiveSource, BNESource)
 MAX_CATALOGUE_CANDIDATES = 5
-# The user's Calibre library, when .env has its address; set in main().
-calibre: CalibreLibrary | None = None
 # Called with (paper, folder) every time a work is downloaded: the history of the web panel, and the
 # daily check adds its own (Calibre and a Telegram message).
 DOWNLOAD_LISTENERS: list[Callable[[Paper, Path], None]] = [download_history.record]
@@ -545,12 +542,11 @@ def prepare_list(papers: list[Paper], only_chosen_languages: bool = True) -> lis
     papers = merge_duplicates(papers)
     if only_chosen_languages:
         papers = keep_chosen_languages(papers)
-    if calibre:
-        in_calibre = calibre.mark_papers(papers)
-        if in_calibre:
-            print(f"{in_calibre} ya están en Calibre.")
-        if calibre.deleted_by_user:
-            print(f"De ellas, {calibre.deleted_by_user} las borraste de Calibre: no se descargan.")
+    in_calibre = calibre_sync.mark_papers(papers)
+    if in_calibre:
+        print(f"{in_calibre} ya están en Calibre.")
+        if calibre_sync.connected_library.deleted_by_user:
+            print(f"De ellas, {calibre_sync.connected_library.deleted_by_user} las borraste de Calibre: no se descargan.")
     tag_repeated_filenames(papers)
     return papers
 
@@ -580,11 +576,7 @@ def keep_earlier_wanted(papers: list[Paper], folder: Path) -> None:
 
 def after_download(papers: list[Paper], folder: Path) -> None:
     """Send the new files to Calibre and say how to get the ones still missing."""
-    if calibre:
-        new = [paper for paper in papers if not paper.in_calibre and is_downloaded(paper, folder)]
-        if new:
-            print(f"\nSubiendo a Calibre {len(new)} archivos nuevos...")
-            upload_files(new, folder)
+    calibre_sync.upload_new_files(papers, folder)
     missing = sum(not is_downloaded(paper, folder) and not paper.in_calibre for paper in papers)
     if missing:
         print(f"{missing} obras quedan pendientes: se reintentarán con \"Reintentar las obras pendientes\","
@@ -596,8 +588,7 @@ def download_pending_by_hand() -> None:
     for papers_file in find_saved_lists(LIBRARY_FOLDER):
         folder = papers_file.parent
         papers = load_papers(papers_file)
-        if calibre:
-            calibre.mark_papers(papers)
+        calibre_sync.mark_papers(papers)
         pending = [paper for paper in papers
                    if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
                    and list_language_allowed(papers_file, paper)]
@@ -627,71 +618,6 @@ def list_language_allowed(papers_file: Path, paper: Paper) -> bool:
     """Whether the work is in the languages of its list (the author's own, or the general ones)."""
     with using_languages(load_content(papers_file).get("language_choice")):
         return paper_language_allowed(paper)
-
-
-def send_to_calibre(paper: Paper, folder: Path) -> str:
-    """Upload the work's file; once Calibre confirms it has it, delete the local copy.
-
-    Return "uploaded" (and deleted), "kept" (uploaded, but Calibre doesn't show the file, so it stays here)
-    or "duplicate" (Calibre has a book with that title and didn't take it; the file stays here).
-    """
-    file_path = downloaded_file(paper, folder)
-    book_id = calibre.upload(file_path, paper)
-    if book_id is None:
-        return "duplicate"
-    if not calibre.book_has_format(book_id, file_path.suffix):
-        return "kept"
-    remove_local_copy(paper, file_path)
-    return "uploaded"
-
-
-def remove_local_copy(paper: Paper, file_path: Path) -> None:
-    file_path.unlink()
-    paper.sent_to_calibre = paper.in_calibre = True
-    paper.downloaded = False
-
-
-def remove_files_in_calibre(papers: list[Paper], folder: Path) -> int:
-    """Delete the files of the works Calibre already has (same DOI, ISBN... and a file of that format)."""
-    removed = 0
-    for paper in papers:
-        file_path = downloaded_file(paper, folder)
-        if file_path and paper.in_calibre and calibre.has_copy(paper, file_path.suffix):
-            remove_local_copy(paper, file_path)
-            removed += 1
-    return removed
-
-
-def upload_files(papers: list[Paper], folder: Path) -> None:
-    uploaded = 0
-    task_progress.step(f"Subiendo a Calibre {len(papers)} archivos")
-    for paper in papers:
-        print(f"  Subiendo {paper.title[:MAX_TITLE_LENGTH_SHOWN]}...", end=" ", flush=True)
-        task_progress.trying(paper.title)
-        try:
-            result = send_to_calibre(paper, folder)
-            if result == "uploaded":
-                uploaded += 1
-                print("✓")
-                task_progress.uploaded(paper.title, True)
-            elif result == "kept":
-                uploaded += 1
-                print("✓ (Calibre no muestra el archivo; se queda también aquí)")
-                task_progress.uploaded(paper.title, True)
-            else:
-                print("ya estaba")
-                task_progress.uploaded(paper.title, True, "ya estaba en Calibre")
-        except requests.HTTPError as error:
-            if error.response is not None and error.response.status_code == 403:
-                print("\nEl usuario de Calibre no tiene permiso para añadir libros (es de solo lectura).")
-                task_progress.uploaded(paper.title, False, "el usuario de Calibre es de solo lectura")
-                return
-            print(f"✗ ({error})")
-            task_progress.uploaded(paper.title, False)
-        except Exception as error:
-            print(f"✗ ({error})")
-            task_progress.uploaded(paper.title, False)
-    print(f"✓ Subidos a Calibre: {uploaded}/{len(papers)}")
 
 
 def search_by_bibliography(source: OpenAlexSource) -> None:
@@ -789,8 +715,7 @@ def retry_pending() -> None:
     for papers_file in find_saved_lists(LIBRARY_FOLDER):
         folder = papers_file.parent
         papers = load_papers(papers_file)
-        if calibre:
-            calibre.mark_papers(papers)
+        calibre_sync.mark_papers(papers)
         pending = [paper for paper in papers
                    if paper.wanted and not paper.in_calibre and not is_downloaded(paper, folder)
                    and list_language_allowed(papers_file, paper) and not needs_review(paper, folder)]
@@ -818,30 +743,6 @@ def retry_pending() -> None:
             paper.downloaded = is_downloaded(paper, folder)
         update_papers(papers_file, papers)
     print("\n✓ Pendientes revisadas.")
-
-
-def upload_downloaded() -> None:
-    if not calibre:
-        print("No hay ninguna biblioteca de Calibre configurada (CALIBRE_URL en .env).")
-        return
-    anything_new = False
-    for papers_file in find_saved_lists(LIBRARY_FOLDER):
-        folder = papers_file.parent
-        papers = load_papers(papers_file)
-        calibre.mark_papers(papers)
-        # The files sent before (when they weren't deleted after uploading) go now.
-        removed = remove_files_in_calibre(papers, folder)
-        if removed:
-            print(f"\n{folder}: borrados {removed} archivos que ya están en Calibre")
-        new = [paper for paper in papers if not paper.in_calibre and is_downloaded(paper, folder)]
-        if new:
-            anything_new = True
-            print(f"\n{folder}: {len(new)} archivos que no están en Calibre")
-            upload_files(new, folder)
-        if removed or new:
-            update_papers(papers_file, papers)
-    if not anything_new:
-        print("✓ Todo lo descargado ya está en Calibre.")
 
 
 def complete_details(source: OpenAlexSource, papers: list[Paper]) -> list[Paper]:
@@ -951,38 +852,11 @@ def choose_followed_authors() -> None:
     print(f"✓ Se revisan cada día {len(followed)} autores.")
 
 
-def connect_calibre() -> None:
-    global calibre
-    calibre = CalibreLibrary.from_environment()
-    if calibre is None:
-        return
-    first_time = calibre.memory is not None and calibre.memory.is_new
-    try:
-        print(f"Calibre: {calibre.load_index()} libros en la biblioteca.")
-    except Exception as error:
-        print(f"Aviso: no se puede leer la biblioteca de Calibre: {error}")
-        calibre = None
-        return
-    if first_time:
-        remember_sent_works(calibre)
-
-
-def remember_sent_works(library: CalibreLibrary) -> None:
-    """Start the memory of Calibre (calibre_memory.py) with the works sent before it existed:
-    some may have been deleted in Calibre already, and then they would be downloaded again."""
-    keys = set()
-    for papers_file in find_saved_lists(LIBRARY_FOLDER):
-        for paper in load_papers(papers_file):
-            if paper.sent_to_calibre:
-                keys |= identifier_keys(paper.all_identifiers()) | title_keys(paper.title, paper.authors)
-    library.memory.remember(keys)
-
-
 def main() -> None:
     source = OpenAlexSource()
     if daily_check_running():
         print("Aviso: la revisión diaria está en marcha; lo que hagas ahora puede chocar con ella.")
-    connect_calibre()
+    calibre_sync.connect()
 
     choice = questionary.select(
         "¿Cómo quieres buscar?",
@@ -1021,7 +895,7 @@ def run_choice(choice: str | None, source: OpenAlexSource) -> None:
     elif choice == "by_hand":
         download_pending_by_hand()
     elif choice == "upload":
-        upload_downloaded()
+        calibre_sync.upload_downloaded()
     elif choice == "browse":
         browse_library(LIBRARY_FOLDER)
     elif choice == "reviews":

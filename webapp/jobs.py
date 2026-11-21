@@ -10,6 +10,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+import calibre_sync
 from storage import LIBRARY_FOLDER
 
 WEB_FOLDER = LIBRARY_FOLDER / ".web"
@@ -57,7 +58,7 @@ def author(arguments: dict) -> None:
     if not profiles:
         sys.exit("No has elegido ningún autor.")
     language_choice = arguments.get("languages") or {"languages": [], "unknown_language": True}
-    main.connect_calibre()
+    calibre_sync.connect()
     # As in the menu: several OpenAlex profiles of one person make a single list, named after the biggest.
     main_author = max(profiles, key=lambda profile: profile.works_count)
     with using_languages(language_choice):
@@ -72,7 +73,7 @@ def title_search(arguments: dict) -> None:
     words = str(arguments.get("words") or "").strip()
     if not words:
         sys.exit("No has escrito ninguna palabra.")
-    main.connect_calibre()
+    calibre_sync.connect()
     found = main.find_by_title(OpenAlexSource(), words)
     WEB_FOLDER.mkdir(parents=True, exist_ok=True)
     TITLE_RESULTS.write_text(json.dumps({"words": words, "papers": [asdict(paper) for paper in found]},
@@ -92,7 +93,7 @@ def title_download(arguments: dict) -> None:
     chosen = sorted({int(number) for number in arguments.get("chosen") or [] if 0 <= int(number) < len(papers)})
     if not chosen:
         sys.exit("No has elegido ninguna obra.")
-    main.connect_calibre()
+    calibre_sync.connect()
     words = results["words"]
     main.download_and_save_search(words, [papers[number] for number in chosen],
                                   main.search_folder(main.TITLE_SEARCH_FOLDER, words))
@@ -105,22 +106,20 @@ def bibliography(arguments: dict) -> None:
     file_path = (BIBLIOGRAPHY_FOLDER / str(arguments.get("file") or "")).resolve()
     if not file_path.is_file() or file_path.parent != BIBLIOGRAPHY_FOLDER.resolve():
         sys.exit("No encuentro el archivo de la bibliografía.")
-    main.connect_calibre()
+    calibre_sync.connect()
     main.download_bibliography(OpenAlexSource(), file_path)
 
 
 def retry(_: dict) -> None:
     import main
 
-    main.connect_calibre()
+    calibre_sync.connect()
     main.retry_pending()
 
 
 def upload(_: dict) -> None:
-    import main
-
-    main.connect_calibre()
-    main.upload_downloaded()
+    calibre_sync.connect()
+    calibre_sync.upload_downloaded()
 
 
 def indexes(arguments: dict) -> None:
@@ -149,7 +148,7 @@ def reviews(arguments: dict) -> None:
 
     # The answers given in Telegram meanwhile go first, as in the menu.
     apply_decisions(LIBRARY_FOLDER)
-    main.connect_calibre()
+    calibre_sync.connect()
     for list_path, chosen in (arguments.get("decisions") or {}).items():
         papers_file = LIBRARY_FOLDER / list_path
         if not papers_file.is_file() or not papers_file.resolve().is_relative_to(LIBRARY_FOLDER.resolve()):

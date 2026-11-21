@@ -23,6 +23,7 @@ import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import calibre_sync
 import daily_reports
 import main
 from downloader import is_downloaded, tag_repeated_filenames
@@ -145,11 +146,11 @@ def check_author_works(source: OpenAlexSource, papers_file: Path, content: dict,
         print(f"Aviso: no se han podido buscar obras nuevas: {error}")
         found = []
     new = add_new_works(papers, found)
-    if main.calibre:
-        main.calibre.mark_papers(papers)
-        if main.calibre.deleted_by_user:
-            print(f"Borradas por ti en Calibre (no se descargan): {main.calibre.deleted_by_user}")
-        removed = main.remove_files_in_calibre(papers, folder)
+    if calibre_sync.connected_library:
+        calibre_sync.mark_papers(papers)
+        if calibre_sync.connected_library.deleted_by_user:
+            print(f"Borradas por ti en Calibre (no se descargan): {calibre_sync.connected_library.deleted_by_user}")
+        removed = calibre_sync.remove_files_in_calibre(papers, folder)
         if removed:
             print(f"Borrados {removed} archivos que ya están en Calibre")
     # As in a search by author: everything new that isn't in Calibre is downloaded, except the
@@ -246,9 +247,9 @@ CALIBRE_STATES = {
 def on_download(paper: Paper, folder: Path) -> None:
     """Every downloaded work goes to Calibre, and the user gets a message."""
     report.author(folder).downloaded += 1
-    if main.calibre:
+    if calibre_sync.connected_library:
         try:
-            state = main.send_to_calibre(paper, folder)
+            state = calibre_sync.send_file(paper, folder)
             calibre_state = CALIBRE_STATES[state]
             report.in_calibre += state in ("uploaded", "kept")
         except Exception as error:
@@ -281,7 +282,7 @@ def report_text() -> str:
     lines = [
         f"📋 Revisión diaria terminada ({minutes // 60} h {minutes % 60} min)",
         f"Autores revisados: {len(results)}",
-        f"📥 Descargadas: {downloaded}" + (f" (subidas a Calibre: {report.in_calibre})" if main.calibre else ""),
+        f"📥 Descargadas: {downloaded}" + (f" (subidas a Calibre: {report.in_calibre})" if calibre_sync.connected_library else ""),
         f"🆕 Obras nuevas: {sum(result.new for result in results)}",
         f"⏳ Siguen sin archivo: {sum(result.pending for result in results)}",
     ]
@@ -319,7 +320,7 @@ def report_data(outcome: str, error: str = "") -> dict:
         "error": error,
         "authors_checked": len(results),
         "downloaded": sum(result.downloaded for result in results),
-        "in_calibre": report.in_calibre if main.calibre else None,
+        "in_calibre": report.in_calibre if calibre_sync.connected_library else None,
         "new": sum(result.new for result in results),
         "pending": sum(result.pending for result in results),
         "asked": report.asked,
@@ -341,11 +342,11 @@ def main_check() -> None:
             print('No se sigue ningún autor (menú: "Autores que seguir").')
             return
         task_progress.groups(len(lists))
-        main.connect_calibre()
+        calibre_sync.connect()
         # The files left in the folders because Calibre didn't answer last time (2026-11-12 and 13) go first.
-        if main.calibre:
+        if calibre_sync.connected_library:
             try:
-                main.upload_downloaded()
+                calibre_sync.upload_downloaded()
             except Exception as error:
                 print(f"Aviso: no se han podido subir a Calibre los archivos pendientes: {error}")
         main.DOWNLOAD_LISTENERS.append(on_download)

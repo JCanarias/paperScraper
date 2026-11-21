@@ -1,5 +1,8 @@
 from dataclasses import dataclass, field
 
+# How much of a long title the console shows.
+MAX_TITLE_LENGTH_SHOWN = 100
+
 
 @dataclass
 class Author:

@@ -20,6 +20,7 @@ import secrets
 import sys
 from pathlib import Path
 
+import calibre_sync
 from downloader import is_downloaded
 from models import Paper
 from storage import LIBRARY_FOLDER, find_saved_lists, load_content, load_papers, update_papers
@@ -164,7 +165,7 @@ def apply_decisions(library: Path = LIBRARY_FOLDER) -> dict[Path, set[str]]:
 def download_accepted(accepted: dict[Path, set[str]]) -> None:
     """Look for the files of the works just accepted in Telegram, and tell the user how it went.
 
-    main.connect_calibre() and the daily check's on_download must be set up by the caller.
+    calibre_sync.connect() and the daily check's on_download must be set up by the caller.
     """
     import datetime as dt
 
@@ -174,8 +175,7 @@ def download_accepted(accepted: dict[Path, set[str]]) -> None:
     for papers_file, review_ids in accepted.items():
         folder = papers_file.parent
         papers = load_papers(papers_file)
-        if main.calibre:
-            main.calibre.mark_papers(papers)
+        calibre_sync.mark_papers(papers)
         # The daily check may have looked for some of them today already (their author is followed).
         today = dt.date.today().isoformat()
         chosen = [paper for paper in papers if paper.review_id in review_ids and not is_downloaded(paper, folder)
@@ -214,7 +214,7 @@ def download_now() -> None:
         # this run takes them too.
         while accepted := apply_decisions():
             if daily_check.on_download not in main.DOWNLOAD_LISTENERS:
-                main.connect_calibre()
+                calibre_sync.connect()
                 main.DOWNLOAD_LISTENERS.append(daily_check.on_download)
             download_accepted(accepted)
     finally:
@@ -236,8 +236,7 @@ def review_in_menu(library: Path = LIBRARY_FOLDER) -> None:
     lists = []
     for papers_file in find_saved_lists(library):
         papers = load_papers(papers_file)
-        if main.calibre:
-            main.calibre.mark_papers(papers)
+        calibre_sync.mark_papers(papers)
         waiting = [paper for paper in papers if needs_review(paper, papers_file.parent)]
         if waiting:
             lists.append((papers_file, papers, waiting))
