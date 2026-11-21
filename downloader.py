@@ -19,6 +19,11 @@ from models import Paper
 TIMEOUT_SECONDS = 30
 # Whole books can be large and come from slow servers.
 DOWNLOAD_TIMEOUT_SECONDS = 120
+# The whole file is kept in memory, and then again while its metadata is written. The daily check has
+# 2 GB, Chrome included, and was killed three days running (2026-11-19 to 21) by downloads of old
+# scanned books; a larger file is left for downloading by hand.
+MAX_DOWNLOAD_BYTES = browser_session.MAX_FILE_BYTES
+DOWNLOAD_CHUNK_BYTES = 1_000_000
 # The tags that point to the file are in the <head>, at the start of the page.
 PAGE_HEAD_LENGTH = 200_000
 MAX_FILENAME_LENGTH = 150
@@ -70,6 +75,10 @@ def download_paper(paper: Paper, folder: Path, urls: list[str]) -> bool:
             download_file(url, paper, folder)
             task_progress.downloaded(paper.title, url)
             return True
+        except browser_session.FileTooLarge as error:
+            # Said in the log, on the line of the download, so the user can get it by hand.
+            print(f"({error})", end=" ")
+            continue
         except Exception:
             continue
 
@@ -155,20 +164,37 @@ def fetch(url: str) -> tuple[bytes, str, str]:
         content, page = browser_session.download(url)
         return content or b"", page, url
     headers = headers_for(url)
-    response = requests.get(url, headers=headers, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+    # Streamed, so that a file too large is stopped before it fills the memory (limited_content).
+    response = requests.get(url, headers=headers, timeout=DOWNLOAD_TIMEOUT_SECONDS, stream=True)
     # Anubis, and some other filters (Zenodo), stop the programs that pass for a browser but let in
     # the ones that say who they are: asked again once with the program's own name.
     if headers is HEADERS and not behind_cloudflare_check(response) and (
             response.status_code in (403, 429) or page_title(response).startswith(BROWSER_CHECK_TITLES)):
-        response = requests.get(url, headers=HONEST_HEADERS, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+        response.close()
+        response = requests.get(url, headers=HONEST_HEADERS, timeout=DOWNLOAD_TIMEOUT_SECONDS, stream=True)
     # The same check on a website not in the list, or reached through a redirect (doi.org,
     # hdl.handle.net): the browser opens the address where the check was, only then.
     if browser_session.needs_browser(response.url) or behind_browser_check(response):
         content, page = browser_session.download(response.url)
         return content or b"", page, response.url
     response.raise_for_status()
-    page = response.text if "html" in response.headers.get("content-type", "") else ""
-    return response.content, page, response.url
+    if "html" in response.headers.get("content-type", ""):
+        return response.content, response.text, response.url
+    return limited_content(response), "", response.url
+
+
+def limited_content(response: requests.Response) -> bytes:
+    """The file of the answer, or an error as soon as it is larger than MAX_DOWNLOAD_BYTES."""
+    if int(response.headers.get("content-length") or 0) > MAX_DOWNLOAD_BYTES:
+        response.close()
+        raise browser_session.FileTooLarge()
+    content = bytearray()
+    for chunk in response.iter_content(DOWNLOAD_CHUNK_BYTES):
+        content += chunk
+        if len(content) > MAX_DOWNLOAD_BYTES:
+            response.close()
+            raise browser_session.FileTooLarge()
+    return bytes(content)
 
 
 def behind_browser_check(response: requests.Response) -> bool:
